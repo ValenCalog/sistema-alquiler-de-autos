@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import StatCard from '../../components/ui/StatCard'
 import {
   getAlquileresRecientes,
@@ -6,11 +7,53 @@ import {
   getVehiculosAtrasados,
 } from '../../services/dashboardService'
 
+const emptyStats = {
+  vehiculosDisponibles: 0,
+  reservasActivas: 0,
+  totalReservas: 0,
+  alquileresEnCurso: 0,
+  vehiculosEnMantenimiento: 0,
+  facturasEmitidas: 0,
+  vehiculosAtrasados: 0,
+}
+
 function AdminDashboardPage() {
-  const stats = getDashboardStats()
-  const reservasRecientes = getReservasRecientes()
-  const alquileresRecientes = getAlquileresRecientes()
+  const [stats, setStats] = useState(emptyStats)
+  const [reservasRecientes, setReservasRecientes] = useState([])
+  const [alquileresRecientes, setAlquileresRecientes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [fallbackMessage, setFallbackMessage] = useState('')
   const atrasados = getVehiculosAtrasados()
+
+  useEffect(() => {
+    let ignore = false
+
+    async function loadDashboard() {
+      const [nextStats, reservasResult, alquileresResult] = await Promise.all([
+        getDashboardStats(),
+        getReservasRecientes(),
+        getAlquileresRecientes(),
+      ])
+
+      if (!ignore) {
+        setStats(nextStats)
+        setReservasRecientes(reservasResult.data)
+        setAlquileresRecientes(alquileresResult.data)
+        setFallbackMessage(
+          reservasResult.usedFallback || alquileresResult.usedFallback || nextStats.usedFallback
+            ? 'Algunos datos administrativos se muestran desde respaldo local.'
+            : '',
+        )
+        setLoading(false)
+      }
+    }
+
+    loadDashboard()
+
+    return () => {
+      ignore = true
+    }
+  }, [])
 
   return (
     <main>
@@ -23,39 +66,45 @@ function AdminDashboardPage() {
         </h1>
         <p className="max-w-2xl text-sm text-[var(--color-muted)]">
           Vista inicial para seguimiento de flota, reservas, alquileres y alertas
-          operativas con datos simulados.
+          operativas.
         </p>
       </div>
+
+      {fallbackMessage && (
+        <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+          {fallbackMessage}
+        </div>
+      )}
 
       <section className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <StatCard
           label="Vehiculos disponibles"
-          value={stats.vehiculosDisponibles}
+          value={loading ? '-' : stats.vehiculosDisponibles}
           detail="Listos para reservar"
         />
         <StatCard
           label="Reservas activas"
-          value={stats.reservasActivas}
-          detail="Pendientes, confirmadas o en curso"
+          value={loading ? '-' : stats.reservasActivas}
+          detail={`${loading ? '-' : stats.totalReservas} reservas totales`}
         />
         <StatCard
           label="Alquileres en curso"
-          value={stats.alquileresEnCurso}
+          value={loading ? '-' : stats.alquileresEnCurso}
           detail="Unidades fuera de sucursal"
         />
         <StatCard
           label="En mantenimiento"
-          value={stats.vehiculosEnMantenimiento}
+          value={loading ? '-' : stats.vehiculosEnMantenimiento}
           detail="Requieren control tecnico"
         />
         <StatCard
           label="Facturas emitidas"
-          value={stats.facturasEmitidas}
+          value={loading ? '-' : stats.facturasEmitidas}
           detail="Comprobantes simulados"
         />
         <StatCard
           label="Vehiculos atrasados"
-          value={stats.vehiculosAtrasados}
+          value={loading ? '-' : stats.vehiculosAtrasados}
           detail="Devoluciones vencidas"
         />
       </section>
@@ -71,7 +120,7 @@ function AdminDashboardPage() {
                   {alerta.cliente} registra {alerta.diasAtraso} dia de atraso.
                 </p>
                 <p className="mt-1 text-[var(--color-muted)]">
-                  Sucursal {alerta.sucursal} · devolucion prevista {alerta.devolucionPrevista}
+                  Sucursal {alerta.sucursal} - devolucion prevista {alerta.devolucionPrevista}
                 </p>
               </article>
             ))}
@@ -90,7 +139,7 @@ function AdminDashboardPage() {
             <table className="w-full min-w-[680px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-[var(--color-muted)]">
                 <tr>
-                  <th className="px-5 py-3">Codigo</th>
+                  <th className="px-5 py-3">Reserva</th>
                   <th className="px-5 py-3">Cliente</th>
                   <th className="px-5 py-3">Vehiculo</th>
                   <th className="px-5 py-3">Sucursal</th>
@@ -98,21 +147,37 @@ function AdminDashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--color-border)]">
-                {reservasRecientes.map((reserva) => (
-                  <tr key={reserva.id}>
-                    <td className="px-5 py-4 font-bold text-[var(--color-primary)]">
-                      {reserva.id}
-                    </td>
-                    <td className="px-5 py-4">{reserva.cliente}</td>
-                    <td className="px-5 py-4">{reserva.vehiculo}</td>
-                    <td className="px-5 py-4">{reserva.sucursal}</td>
-                    <td className="px-5 py-4">
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-[var(--color-secondary)]">
-                        {reserva.estado}
-                      </span>
+                {loading ? (
+                  <tr>
+                    <td colSpan="5" className="px-5 py-8 text-center font-semibold text-[var(--color-muted)]">
+                      Cargando reservas...
                     </td>
                   </tr>
-                ))}
+                ) : reservasRecientes.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="px-5 py-8 text-center font-semibold text-[var(--color-muted)]">
+                      No hay reservas recientes.
+                    </td>
+                  </tr>
+                ) : (
+                  reservasRecientes.map((reserva) => (
+                    <tr key={reserva.idReserva}>
+                      <td className="px-5 py-4 font-bold text-[var(--color-primary)]">
+                        #{reserva.idReserva}
+                      </td>
+                      <td className="px-5 py-4">{reserva.emailCliente || reserva.cliente}</td>
+                      <td className="px-5 py-4">
+                        {reserva.marca} {reserva.modelo}
+                      </td>
+                      <td className="px-5 py-4">{reserva.sucursal}</td>
+                      <td className="px-5 py-4">
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-[var(--color-secondary)]">
+                          {reserva.estado}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -136,21 +201,37 @@ function AdminDashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--color-border)]">
-                {alquileresRecientes.map((alquiler) => (
-                  <tr key={alquiler.id}>
-                    <td className="px-5 py-4 font-bold text-[var(--color-primary)]">
-                      {alquiler.id}
-                    </td>
-                    <td className="px-5 py-4">{alquiler.cliente}</td>
-                    <td className="px-5 py-4">{alquiler.vehiculo}</td>
-                    <td className="px-5 py-4">{alquiler.devolucionPrevista}</td>
-                    <td className="px-5 py-4">
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-[var(--color-secondary)]">
-                        {alquiler.estado}
-                      </span>
+                {loading ? (
+                  <tr>
+                    <td colSpan="5" className="px-5 py-8 text-center font-semibold text-[var(--color-muted)]">
+                      Cargando alquileres...
                     </td>
                   </tr>
-                ))}
+                ) : alquileresRecientes.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="px-5 py-8 text-center font-semibold text-[var(--color-muted)]">
+                      No hay alquileres recientes.
+                    </td>
+                  </tr>
+                ) : (
+                  alquileresRecientes.map((alquiler) => (
+                    <tr key={alquiler.idAlquiler || alquiler.id}>
+                      <td className="px-5 py-4 font-bold text-[var(--color-primary)]">
+                        #{alquiler.idAlquiler || alquiler.id}
+                      </td>
+                      <td className="px-5 py-4">{alquiler.cliente}</td>
+                      <td className="px-5 py-4">{alquiler.vehiculo}</td>
+                      <td className="px-5 py-4">
+                        {alquiler.fechaFinPrevista || alquiler.devolucionPrevista}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-[var(--color-secondary)]">
+                          {alquiler.estado}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
