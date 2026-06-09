@@ -10,7 +10,7 @@ function VehiculosPage() {
     sucursal: '',
     tipo: '',
     estado: '',
-    precioMaximo: '100000',
+    precioMaximo: '',
   })
   const [vehicles, setVehicles] = useState([])
   const [loading, setLoading] = useState(true)
@@ -115,17 +115,32 @@ function VehiculosPage() {
               </select>
             </label>
             <label className="space-y-2 text-sm font-semibold text-[var(--color-muted)]">
-              Precio maximo: ${Number(filters.precioMaximo).toLocaleString('es-AR')}
+              Precio maximo:{' '}
+              {filters.precioMaximo
+                ? `$${Number(filters.precioMaximo).toLocaleString('es-AR')}`
+                : 'sin limite'}
               <input
                 type="range"
                 name="precioMaximo"
                 min="30000"
                 max="100000"
                 step="5000"
-                value={filters.precioMaximo}
+                value={filters.precioMaximo || '100000'}
                 onChange={handleFilterChange}
                 className="w-full accent-[var(--color-accent)]"
               />
+              {filters.precioMaximo && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoading(true)
+                    setFilters((current) => ({ ...current, precioMaximo: '' }))
+                  }}
+                  className="text-sm font-bold text-[var(--color-accent)] hover:text-red-800"
+                >
+                  Quitar limite de precio
+                </button>
+              )}
             </label>
           </div>
         </aside>
@@ -134,6 +149,10 @@ function VehiculosPage() {
           {loading ? (
             <div className="rounded-lg border border-[var(--color-border)] bg-white p-6 text-sm font-semibold text-[var(--color-muted)] shadow-sm md:col-span-2 xl:col-span-3">
               Cargando vehiculos...
+            </div>
+          ) : vehicles.length === 0 ? (
+            <div className="rounded-lg border border-[var(--color-border)] bg-white p-6 text-sm font-semibold text-[var(--color-muted)] shadow-sm md:col-span-2 xl:col-span-3">
+              No hay vehiculos que coincidan con los filtros.
             </div>
           ) : (
             vehicles.map((vehicle) => <VehicleCard key={vehicle.id} vehicle={vehicle} />)

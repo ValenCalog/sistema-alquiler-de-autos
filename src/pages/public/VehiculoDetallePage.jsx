@@ -139,13 +139,13 @@ function VehiculoDetallePage() {
         <section>
           <div className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-white shadow-sm">
             <img
-              src={vehicle.imagenes[selectedImage]}
+              src={vehicle.imagenes[selectedImage] || vehicle.imagenPrincipal}
               alt={`${vehicle.marca} ${vehicle.modelo}`}
               className="aspect-[16/10] w-full object-cover"
             />
           </div>
           <div className="mt-3 grid grid-cols-5 gap-3">
-            {vehicle.imagenes.map((image, index) => (
+            {(vehicle.imagenes.length > 0 ? vehicle.imagenes : [vehicle.imagenPrincipal]).map((image, index) => (
               <button
                 key={image}
                 type="button"
@@ -190,7 +190,9 @@ function VehiculoDetallePage() {
               <div>
                 <dt className="font-semibold text-[var(--color-muted)]">Precio diario</dt>
                 <dd className="mt-1 font-bold text-[var(--color-text)]">
-                  ${vehicle.precioDiario.toLocaleString('es-AR')}
+                  {vehicle.precioDiario != null
+                    ? `$${vehicle.precioDiario.toLocaleString('es-AR')}`
+                    : 'A confirmar'}
                 </dd>
               </div>
             </dl>
@@ -200,7 +202,7 @@ function VehiculoDetallePage() {
                 Confort
               </h2>
               <ul className="mt-3 flex flex-wrap gap-2">
-                {vehicle.confort.map((item) => (
+                {(Array.isArray(vehicle.confort) ? vehicle.confort : [vehicle.confort]).map((item) => (
                   <li
                     key={item}
                     className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-[var(--color-secondary)]"

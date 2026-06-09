@@ -2,11 +2,13 @@ import Badge from './Badge'
 import Button from './Button'
 
 function VehicleCard({ vehicle }) {
+  const imageSrc = vehicle.imagenPrincipal || vehicle.imagenes?.[0]
+
   return (
     <article className="flex h-full flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <div className="aspect-[16/10] overflow-hidden bg-slate-200">
         <img
-          src={vehicle.imagenes[0]}
+          src={imageSrc}
           alt={`${vehicle.marca} ${vehicle.modelo}`}
           className="h-full w-full object-cover"
         />
@@ -34,7 +36,9 @@ function VehicleCard({ vehicle }) {
           <div>
             <dt className="font-semibold text-[var(--color-muted)]">Precio diario</dt>
             <dd className="font-bold text-[var(--color-text)]">
-              ${vehicle.precioDiario.toLocaleString('es-AR')}
+              {vehicle.precioDiario != null
+                ? `$${vehicle.precioDiario.toLocaleString('es-AR')}`
+                : 'A confirmar'}
             </dd>
           </div>
         </dl>
