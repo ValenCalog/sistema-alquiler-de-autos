@@ -1,5 +1,6 @@
 import Badge from './Badge'
 import Button from './Button'
+import VehicleImage from './VehicleImage'
 
 function VehicleCard({ vehicle }) {
   const imageSrc = vehicle.imagenPrincipal || vehicle.imagenes?.[0]
@@ -7,7 +8,7 @@ function VehicleCard({ vehicle }) {
   return (
     <article className="flex h-full flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <div className="aspect-[16/10] overflow-hidden bg-slate-200">
-        <img
+        <VehicleImage
           src={imageSrc}
           alt={`${vehicle.marca} ${vehicle.modelo}`}
           className="h-full w-full object-cover"

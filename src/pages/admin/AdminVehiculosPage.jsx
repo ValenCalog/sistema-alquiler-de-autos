@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import Button from '../../components/ui/Button'
+import VehicleImage from '../../components/ui/VehicleImage'
 import {
+  agregarImagenesVehiculo,
   crearVehiculo,
   getCatalogosVehiculo,
   getVehiculos,
@@ -40,6 +42,9 @@ function AdminVehiculosPage() {
   const [fallbackMessage, setFallbackMessage] = useState('')
   const [catalogMessage, setCatalogMessage] = useState('')
   const [actionMessage, setActionMessage] = useState(null)
+  const [imagePanelVehicle, setImagePanelVehicle] = useState(null)
+  const [imageUrls, setImageUrls] = useState([''])
+  const [imageSaving, setImageSaving] = useState(false)
 
   async function loadVehiculos() {
     setLoading(true)
@@ -171,6 +176,53 @@ function AdminVehiculosPage() {
     return ''
   }
 
+  function openImagePanel(vehiculo) {
+    setImagePanelVehicle(vehiculo)
+    setImageUrls([''])
+    setActionMessage(null)
+  }
+
+  function closeImagePanel() {
+    setImagePanelVehicle(null)
+    setImageUrls([''])
+    setImageSaving(false)
+  }
+
+  function handleImageUrlChange(index, value) {
+    setImageUrls((current) =>
+      current.map((imageUrl, currentIndex) => (currentIndex === index ? value : imageUrl)),
+    )
+  }
+
+  function addImageUrlInput() {
+    const currentCount = imagePanelVehicle?.imagenes?.length || 0
+    const availableSlots = Math.max(0, 5 - currentCount)
+
+    setImageUrls((current) =>
+      current.length < availableSlots ? [...current, ''] : current,
+    )
+  }
+
+  function removeImageUrlInput(index) {
+    setImageUrls((current) =>
+      current.length > 1 ? current.filter((_, currentIndex) => currentIndex !== index) : current,
+    )
+  }
+
+  function validateImagePanel() {
+    const currentCount = imagePanelVehicle?.imagenes?.length || 0
+    const cleanImages = imageUrls.map((imageUrl) => imageUrl.trim()).filter(Boolean)
+
+    if (currentCount >= 5) return 'Este vehiculo ya tiene el maximo de 5 imagenes.'
+    if (cleanImages.length === 0) return 'Carga al menos una URL nueva.'
+    if (cleanImages.length !== imageUrls.length) return 'No dejes URLs vacias.'
+    if (currentCount + cleanImages.length > 5) {
+      return `Solo podes agregar ${5 - currentCount} imagenes mas a este vehiculo.`
+    }
+
+    return ''
+  }
+
   async function handleSubmit(event) {
     event.preventDefault()
 
@@ -208,6 +260,42 @@ function AdminVehiculosPage() {
     })
     resetForm()
     setShowForm(false)
+    await loadVehiculos()
+  }
+
+  async function handleSubmitImages(event) {
+    event.preventDefault()
+
+    const validationMessage = validateImagePanel()
+    if (validationMessage) {
+      setActionMessage({ type: 'error', text: validationMessage })
+      return
+    }
+
+    setImageSaving(true)
+    setActionMessage(null)
+
+    const cleanImages = imageUrls.map((imageUrl) => imageUrl.trim())
+    const result = await agregarImagenesVehiculo({
+      idVehiculo: Number(imagePanelVehicle.id),
+      imagenes: cleanImages,
+    })
+
+    setImageSaving(false)
+
+    if (!result.exito) {
+      setActionMessage({
+        type: 'error',
+        text: result.mensaje || 'No se pudieron agregar las imagenes.',
+      })
+      return
+    }
+
+    setActionMessage({
+      type: 'success',
+      text: `${result.mensaje || 'Imagenes agregadas correctamente.'} Insertadas: ${result.cantidadInsertadas}`,
+    })
+    closeImagePanel()
     await loadVehiculos()
   }
 
@@ -439,11 +527,115 @@ function AdminVehiculosPage() {
         </section>
       )}
 
+      {imagePanelVehicle && (
+        <section className="mt-6 rounded-lg border border-[var(--color-border)] bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-[var(--color-border)] pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-wide text-[var(--color-accent)]">
+                Gestion de imagenes
+              </p>
+              <h2 className="mt-1 text-xl font-bold text-[var(--color-primary)]">
+                #{imagePanelVehicle.id} {imagePanelVehicle.marca} {imagePanelVehicle.modelo}
+              </h2>
+              <p className="mt-1 text-sm font-semibold text-[var(--color-muted)]">
+                Imagenes actuales: {imagePanelVehicle.imagenes?.length || 0} / 5
+              </p>
+            </div>
+            <Button type="button" variant="outline" onClick={closeImagePanel}>
+              Cerrar
+            </Button>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-[0.9fr_1.1fr]">
+            <div>
+              <p className="text-sm font-semibold text-[var(--color-muted)]">
+                Imagenes actuales
+              </p>
+              {imagePanelVehicle.imagenes?.length > 0 ? (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  {imagePanelVehicle.imagenes.map((image, index) => (
+                    <div
+                      key={`${image}-${index}`}
+                      className="overflow-hidden rounded-md border border-[var(--color-border)]"
+                    >
+                      <VehicleImage
+                        src={image}
+                        alt={`Imagen ${index + 1} de ${imagePanelVehicle.marca} ${imagePanelVehicle.modelo}`}
+                        className="aspect-[4/3] w-full object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3 rounded-md border border-dashed border-[var(--color-border-strong)] bg-slate-50 p-6 text-center text-sm font-semibold text-[var(--color-muted)]">
+                  Sin imagenes cargadas.
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleSubmitImages} className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-semibold text-[var(--color-muted)]">
+                  Nuevas URLs
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={addImageUrlInput}
+                  disabled={(imagePanelVehicle.imagenes?.length || 0) + imageUrls.length >= 5}
+                >
+                  Agregar URL
+                </Button>
+              </div>
+
+              <div className="grid gap-3">
+                {imageUrls.map((imageUrl, index) => (
+                  <div key={index} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <input
+                      type="url"
+                      value={imageUrl}
+                      onChange={(event) => handleImageUrlChange(index, event.target.value)}
+                      className="field"
+                      placeholder="https://..."
+                      disabled={(imagePanelVehicle.imagenes?.length || 0) >= 5}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => removeImageUrlInput(index)}
+                      disabled={imageUrls.length === 1 || (imagePanelVehicle.imagenes?.length || 0) >= 5}
+                    >
+                      Quitar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              {(imagePanelVehicle.imagenes?.length || 0) >= 5 && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+                  Este vehiculo ya tiene el maximo de 5 imagenes.
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <Button
+                  type="submit"
+                  disabled={imageSaving || (imagePanelVehicle.imagenes?.length || 0) >= 5}
+                >
+                  {imageSaving ? 'Guardando imagenes...' : 'Guardar imagenes'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </section>
+      )}
+
       <section className="mt-6 rounded-lg border border-[var(--color-border)] bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] text-left text-sm">
+          <table className="w-full min-w-[1180px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-[var(--color-muted)]">
               <tr>
+                <th className="px-5 py-3">Imagen</th>
                 <th className="px-5 py-3">Vehiculo</th>
                 <th className="px-5 py-3">Marca</th>
                 <th className="px-5 py-3">Modelo</th>
@@ -451,24 +643,35 @@ function AdminVehiculosPage() {
                 <th className="px-5 py-3">Sucursal</th>
                 <th className="px-5 py-3">Estado</th>
                 <th className="px-5 py-3">Precio diario</th>
+                <th className="px-5 py-3">Imagenes</th>
+                <th className="px-5 py-3">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="px-5 py-8 text-center font-semibold text-[var(--color-muted)]">
+                  <td colSpan="10" className="px-5 py-8 text-center font-semibold text-[var(--color-muted)]">
                     Cargando vehiculos...
                   </td>
                 </tr>
               ) : vehiculos.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-5 py-8 text-center font-semibold text-[var(--color-muted)]">
+                  <td colSpan="10" className="px-5 py-8 text-center font-semibold text-[var(--color-muted)]">
                     No hay vehiculos para mostrar.
                   </td>
                 </tr>
               ) : (
                 vehiculos.map((vehiculo) => (
                   <tr key={vehiculo.id}>
+                    <td className="px-5 py-4">
+                      <div className="h-16 w-24 overflow-hidden rounded-md border border-[var(--color-border)]">
+                        <VehicleImage
+                          src={vehiculo.imagenPrincipal || vehiculo.imagenes?.[0]}
+                          alt={`${vehiculo.marca} ${vehiculo.modelo}`}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    </td>
                     <td className="px-5 py-4 font-bold text-[var(--color-primary)]">
                       #{vehiculo.id}
                     </td>
@@ -487,6 +690,18 @@ function AdminVehiculosPage() {
                       }`}
                     >
                       {formatCurrency(vehiculo.precioDiario)}
+                    </td>
+                    <td className="px-5 py-4 font-semibold text-[var(--color-text)]">
+                      {vehiculo.imagenes?.length || 0} / 5
+                    </td>
+                    <td className="px-5 py-4">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => openImagePanel(vehiculo)}
+                      >
+                        Gestionar imagenes
+                      </Button>
                     </td>
                   </tr>
                 ))

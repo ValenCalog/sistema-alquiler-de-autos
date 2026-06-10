@@ -1,10 +1,6 @@
 import { vehiculos } from '../data/mockData'
 import { supabase } from '../lib/supabaseClient'
 
-const PLACEHOLDER_IMAGE =
-  vehiculos.find((vehiculo) => vehiculo.imagenes?.length > 0)?.imagenes[0] ||
-  'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?auto=format&fit=crop&w=1200&q=80'
-
 function fallbackResult(data, motivo = '') {
   console.warn('Usando mockData por:', motivo)
 
@@ -51,6 +47,17 @@ function normalizeCrearVehiculoRpcResponse(data) {
   }
 }
 
+function normalizeAgregarImagenesRpcResponse(data, idVehiculo) {
+  const row = Array.isArray(data) ? data[0] : data
+
+  return {
+    exito: Boolean(row?.exito),
+    mensaje: row?.mensaje || '',
+    idVehiculo: row?.id_vehiculo ?? idVehiculo,
+    cantidadInsertadas: row?.cantidad_insertadas ?? 0,
+  }
+}
+
 function hasMeaningfulFilter(value, ignoredValues = []) {
   if (value === undefined || value === null) return false
 
@@ -83,22 +90,23 @@ function normalizeImagenes(row) {
     }
   }
 
-  const cleanImagenes = imagenes
+  const candidatas = [...imagenes, row.imagen_principal]
+
+  const cleanImagenes = candidatas
     .map((imagen) => {
       if (typeof imagen === 'string') return imagen.trim()
       return imagen?.url || imagen?.url_imagen || imagen?.imagen_url || imagen?.ruta || ''
     })
-    .filter(Boolean)
+    .map((imagen) => String(imagen || '').trim())
+    .filter((imagen) => imagen.length > 0)
+    .filter((imagen) => !imagen.toLowerCase().includes('sin imagen'))
 
-  if (cleanImagenes.length > 0) return cleanImagenes.slice(0, 5)
-  if (row.imagen_principal) return [row.imagen_principal]
-
-  return []
+  return [...new Set(cleanImagenes)].slice(0, 5)
 }
 
 function normalizeVehiculoCatalogo(row) {
   const imagenes = normalizeImagenes(row)
-  const imagenPrincipal = row.imagen_principal || imagenes[0] || PLACEHOLDER_IMAGE
+  const imagenPrincipal = imagenes[0] || null
 
   return {
     id: String(row.id_vehiculo),
@@ -352,6 +360,49 @@ export async function crearVehiculo({
       exito: false,
       mensaje: 'No se pudo crear el vehiculo en este momento.',
       idVehiculo: null,
+    }
+  }
+}
+
+export async function agregarImagenesVehiculo({ idVehiculo, imagenes }) {
+  if (!supabase) {
+    return {
+      exito: false,
+      mensaje: 'No se pudieron agregar las imagenes en este momento.',
+      idVehiculo,
+      cantidadInsertadas: 0,
+    }
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('fn_agregar_imagenes_vehiculo_api', {
+      p_id_vehiculo: idVehiculo,
+      p_imagenes: imagenes,
+    })
+
+    if (error) {
+      console.error('Error tecnico al agregar imagenes al vehiculo:', error)
+      return {
+        exito: false,
+        mensaje: 'No se pudieron agregar las imagenes en este momento.',
+        idVehiculo,
+        cantidadInsertadas: 0,
+      }
+    }
+
+    const result = normalizeAgregarImagenesRpcResponse(data, idVehiculo)
+
+    return {
+      ...result,
+      mensaje: result.mensaje || 'No se pudieron agregar las imagenes.',
+    }
+  } catch (error) {
+    console.error('Error inesperado al agregar imagenes al vehiculo:', error)
+    return {
+      exito: false,
+      mensaje: 'No se pudieron agregar las imagenes en este momento.',
+      idVehiculo,
+      cantidadInsertadas: 0,
     }
   }
 }
