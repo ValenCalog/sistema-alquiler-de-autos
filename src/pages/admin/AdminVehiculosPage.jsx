@@ -20,7 +20,7 @@ function formatCurrency(value) {
 }
 
 function findDisponible(estados) {
-  return estados.find((estado) => estado.normalized === 'disponible')?.id || ''
+  return estados.find((estado) => estado.normalized === 'disponible')?.value || ''
 }
 
 function AdminVehiculosPage() {
@@ -281,8 +281,13 @@ function AdminVehiculosPage() {
                   disabled={catalogLoading}
                 >
                   <option value="">Seleccionar</option>
+                  {!catalogLoading && catalogos.modelos.length === 0 && (
+                    <option value="" disabled>
+                      No hay opciones cargadas
+                    </option>
+                  )}
                   {catalogos.modelos.map((modelo) => (
-                    <option key={modelo.id} value={modelo.id}>
+                    <option key={modelo.value} value={modelo.value}>
                       {modelo.label}
                     </option>
                   ))}
@@ -299,9 +304,14 @@ function AdminVehiculosPage() {
                   disabled={catalogLoading}
                 >
                   <option value="">Seleccionar</option>
+                  {!catalogLoading && catalogos.tipos.length === 0 && (
+                    <option value="" disabled>
+                      No hay opciones cargadas
+                    </option>
+                  )}
                   {catalogos.tipos.map((tipo) => (
-                    <option key={tipo.id} value={tipo.id}>
-                      {tipo.nombre}
+                    <option key={tipo.value} value={tipo.value}>
+                      {tipo.label}
                     </option>
                   ))}
                 </select>
@@ -317,9 +327,14 @@ function AdminVehiculosPage() {
                   disabled={catalogLoading}
                 >
                   <option value="">Seleccionar</option>
+                  {!catalogLoading && catalogos.sucursales.length === 0 && (
+                    <option value="" disabled>
+                      No hay opciones cargadas
+                    </option>
+                  )}
                   {catalogos.sucursales.map((sucursal) => (
-                    <option key={sucursal.id} value={sucursal.id}>
-                      {sucursal.nombre}
+                    <option key={sucursal.value} value={sucursal.value}>
+                      {sucursal.label}
                     </option>
                   ))}
                 </select>
@@ -335,9 +350,14 @@ function AdminVehiculosPage() {
                   disabled={catalogLoading}
                 >
                   <option value="">Seleccionar</option>
+                  {!catalogLoading && catalogos.estados.length === 0 && (
+                    <option value="" disabled>
+                      No hay opciones cargadas
+                    </option>
+                  )}
                   {catalogos.estados.map((estado) => (
-                    <option key={estado.id} value={estado.id}>
-                      {estado.nombre}
+                    <option key={estado.value} value={estado.value}>
+                      {estado.label}
                     </option>
                   ))}
                 </select>

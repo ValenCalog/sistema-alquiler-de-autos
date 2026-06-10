@@ -35,7 +35,8 @@ function catalogResult(data, error = '') {
 }
 
 function catalogErrorResult(error) {
-  console.error('Error al cargar catalogo:', error)
+  console.log('Error cargando catalogos:', error)
+  console.error('Error cargando catalogo:', error)
 
   return catalogResult([], error.message || 'No se pudo cargar el catalogo.')
 }
@@ -118,65 +119,46 @@ function normalizeVehiculoCatalogo(row) {
 }
 
 function normalizeMarca(row) {
-  const id = row.id_marca ?? row.id
-  const nombre = row.marca ?? row.nombre ?? row.nombre_marca ?? row.descripcion ?? `Marca #${id}`
-
   return {
-    id: String(id),
-    idMarca: id,
-    nombre,
+    value: row.id_marca,
+    label: row.nombre_marca,
+    idMarca: row.id_marca,
   }
 }
 
-function normalizeModelo(row, marcasById = new Map()) {
-  const id = row.id_modelo ?? row.id
-  const idMarca = row.id_marca ?? row.idMarca ?? null
-  const modelo = row.modelo ?? row.nombre ?? row.nombre_modelo ?? row.descripcion ?? `Modelo #${id}`
-  const marca = row.marca ?? row.nombre_marca ?? marcasById.get(String(idMarca))?.nombre ?? ''
-
+function normalizeModelo(row) {
   return {
-    id: String(id),
-    idModelo: id,
-    idMarca,
-    modelo,
-    marca,
-    label: [marca, modelo].filter(Boolean).join(' ') || modelo,
+    value: row.id_modelo,
+    label: row.descripcion_modelo,
+    idModelo: row.id_modelo,
+    modelo: row.modelo,
+    idMarca: row.id_marca,
+    marca: row.nombre_marca,
   }
 }
 
 function normalizeTipoVehiculo(row) {
-  const id = row.id_tipo_vehiculo ?? row.id_tipovehiculo ?? row.id
-  const nombre =
-    row.tipo ?? row.nombre ?? row.nombre_tipo ?? row.descripcion ?? `Tipo #${id}`
-
   return {
-    id: String(id),
-    idTipoVehiculo: id,
-    nombre,
+    value: row.id_tipo_vehiculo,
+    label: row.nombre_tipo,
+    idTipoVehiculo: row.id_tipo_vehiculo,
   }
 }
 
 function normalizeSucursal(row) {
-  const id = row.id_sucursal ?? row.id
-  const nombre = row.sucursal ?? row.nombre ?? row.nombre_sucursal ?? row.descripcion ?? `Sucursal #${id}`
-
   return {
-    id: String(id),
-    idSucursal: id,
-    nombre,
+    value: row.id_sucursal,
+    label: row.direccion,
+    idSucursal: row.id_sucursal,
   }
 }
 
 function normalizeEstadoVehiculo(row) {
-  const id = row.id_estado ?? row.id_estado_vehiculo ?? row.id
-  const nombre =
-    row.estado ?? row.nombre ?? row.nombre_estado ?? row.descripcion ?? `Estado #${id}`
-
   return {
-    id: String(id),
-    idEstado: id,
-    nombre,
-    normalized: normalizeFilterValue(nombre),
+    value: row.id_estado,
+    label: row.nombre_estado,
+    idEstado: row.id_estado,
+    normalized: normalizeFilterValue(row.nombre_estado),
   }
 }
 
@@ -378,9 +360,18 @@ export async function getMarcas() {
   if (!supabase) return catalogResult([], 'No hay variables de entorno de Supabase configuradas.')
 
   try {
-    const { data, error } = await supabase.from('marca').select('*').order('id_marca')
+    const { data, error } = await supabase
+      .from('vw_catalogo_modelos')
+      .select('id_marca, nombre_marca')
+      .order('nombre_marca')
+
     if (error) throw error
-    return catalogResult((data || []).map(normalizeMarca))
+
+    const marcasById = new Map((data || []).map((marca) => [marca.id_marca, normalizeMarca(marca)]))
+    const marcas = [...marcasById.values()]
+    console.log('Marcas cargadas:', marcas)
+
+    return catalogResult(marcas)
   } catch (error) {
     return catalogErrorResult(error)
   }
@@ -390,65 +381,95 @@ export async function getModelos() {
   if (!supabase) return catalogResult([], 'No hay variables de entorno de Supabase configuradas.')
 
   try {
-    const marcasResult = await getMarcas()
-    const marcasById = new Map(marcasResult.data.map((marca) => [String(marca.idMarca), marca]))
-    const { data, error } = await supabase.from('modelo').select('*').order('id_modelo')
+    const { data, error } = await supabase
+      .from('vw_catalogo_modelos')
+      .select('*')
+      .order('descripcion_modelo')
 
     if (error) throw error
 
-    return catalogResult((data || []).map((modelo) => normalizeModelo(modelo, marcasById)))
+    console.log('Modelos desde vw_catalogo_modelos:', data)
+
+    const modelos = (data || []).map(normalizeModelo)
+    console.log('Modelos cargados:', modelos)
+
+    return catalogResult(modelos)
   } catch (error) {
     return catalogErrorResult(error)
   }
 }
 
-export async function getTiposVehiculoCatalogo() {
+export async function getTiposVehiculo() {
   if (!supabase) return catalogResult([], 'No hay variables de entorno de Supabase configuradas.')
 
   try {
     const { data, error } = await supabase
-      .from('tipovehiculo')
+      .from('vw_catalogo_tipos_vehiculo')
       .select('*')
-      .order('id_tipo_vehiculo')
+      .order('nombre_tipo')
 
     if (error) throw error
 
-    return catalogResult((data || []).map(normalizeTipoVehiculo))
+    console.log('Tipos desde vw_catalogo_tipos_vehiculo:', data)
+
+    const tipos = (data || []).map(normalizeTipoVehiculo)
+    console.log('Tipos cargados:', tipos)
+
+    return catalogResult(tipos)
   } catch (error) {
     return catalogErrorResult(error)
   }
 }
+
+export const getTiposVehiculoCatalogo = getTiposVehiculo
 
 export async function getSucursalesCatalogo() {
   if (!supabase) return catalogResult([], 'No hay variables de entorno de Supabase configuradas.')
 
   try {
-    const { data, error } = await supabase.from('sucursal').select('*').order('id_sucursal')
+    const { data, error } = await supabase
+      .from('vw_catalogo_sucursales')
+      .select('*')
+      .order('direccion')
 
     if (error) throw error
 
-    return catalogResult((data || []).map(normalizeSucursal))
+    console.log('Sucursales desde vw_catalogo_sucursales:', data)
+
+    const sucursales = (data || []).map(normalizeSucursal)
+    console.log('Sucursales cargadas:', sucursales)
+
+    return catalogResult(sucursales)
   } catch (error) {
     return catalogErrorResult(error)
   }
 }
+
+export const getSucursales = getSucursalesCatalogo
 
 export async function getEstadosVehiculoCatalogo() {
   if (!supabase) return catalogResult([], 'No hay variables de entorno de Supabase configuradas.')
 
   try {
     const { data, error } = await supabase
-      .from('estadovehiculo')
+      .from('vw_catalogo_estados_vehiculo')
       .select('*')
-      .order('id_estado')
+      .order('nombre_estado')
 
     if (error) throw error
 
-    return catalogResult((data || []).map(normalizeEstadoVehiculo))
+    console.log('Estados desde vw_catalogo_estados_vehiculo:', data)
+
+    const estados = (data || []).map(normalizeEstadoVehiculo)
+    console.log('Estados cargados:', estados)
+
+    return catalogResult(estados)
   } catch (error) {
     return catalogErrorResult(error)
   }
 }
+
+export const getEstadosVehiculo = getEstadosVehiculoCatalogo
 
 export async function getTarifas() {
   if (!supabase) return catalogResult([], 'No hay variables de entorno de Supabase configuradas.')
