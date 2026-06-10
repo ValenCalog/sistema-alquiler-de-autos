@@ -10,13 +10,11 @@ function RegistroPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(event) {
     event.preventDefault()
     setError('')
-    setMessage('')
 
     if (!email.trim()) {
       setError('Ingresa tu email.')
@@ -42,14 +40,12 @@ function RegistroPage() {
       setLoading(true)
       const data = await register({ email: email.trim(), password })
 
-      if (data.session) {
-        navigate('/vehiculos', { replace: true })
+      if (!data.exito) {
+        setError(data.mensaje || 'No se pudo crear la cuenta.')
         return
       }
 
-      setMessage('Registro creado. Revisa tu correo para confirmar la cuenta.')
-      setPassword('')
-      setConfirmPassword('')
+      navigate('/vehiculos', { replace: true })
     } catch (authError) {
       setError(authError.message)
     } finally {
@@ -102,11 +98,6 @@ function RegistroPage() {
           {error && (
             <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
               {error}
-            </p>
-          )}
-          {message && (
-            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
-              {message}
             </p>
           )}
           <Button type="submit" className="w-full" disabled={loading}>

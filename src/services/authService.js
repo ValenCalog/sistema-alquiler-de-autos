@@ -1,141 +1,98 @@
 import { supabase } from '../lib/supabaseClient'
 
-function requireSupabase() {
-  if (!supabase) {
-    throw new Error('No se pudo conectar con Supabase. Revisa la configuracion del entorno.')
-  }
-
-  return supabase
+function normalizeRol(rol) {
+  return String(rol || '').trim().toUpperCase()
 }
 
-function getFriendlyAuthMessage(error) {
-  const message = String(error?.message || '').toLowerCase()
-  const status = error?.status
-
-  if (message.includes('supabase') || message.includes('configuracion')) {
-    return 'No se pudo conectar con Supabase. Revisa la configuracion del entorno.'
+function normalizeAuthUser(row, fallbackEmail = '') {
+  return {
+    idUsuario: row?.id_usuario ?? null,
+    idCliente: row?.id_cliente ?? null,
+    email: row?.email || fallbackEmail,
+    rol: normalizeRol(row?.rol),
   }
-
-  if (message.includes('invalid login credentials') || status === 400) {
-    return 'Email o contrasena incorrectos.'
-  }
-
-  if (message.includes('email not confirmed')) {
-    return 'Tenes que confirmar tu correo antes de iniciar sesion.'
-  }
-
-  if (message.includes('user already registered') || message.includes('already registered')) {
-    return 'Ya existe una cuenta registrada con ese email.'
-  }
-
-  if (
-    message.includes('password') &&
-    (message.includes('6') || message.includes('weak') || message.includes('short'))
-  ) {
-    return 'La contrasena debe tener al menos 6 caracteres.'
-  }
-
-  if (message.includes('signup') && message.includes('disabled')) {
-    return 'El registro de usuarios esta deshabilitado en Supabase.'
-  }
-
-  if (message.includes('invalid email') || message.includes('email address is invalid')) {
-    return 'Ingresa un email valido.'
-  }
-
-  if (message.includes('email rate limit exceeded') || message.includes('rate limit')) {
-    return 'Se hicieron demasiados intentos. Espera unos minutos y proba de nuevo.'
-  }
-
-  if (message.includes('database error')) {
-    return 'Supabase no pudo guardar el usuario. Revisa si hay triggers o restricciones sobre usuarios/clientes.'
-  }
-
-  if (message.includes('error sending confirmation email')) {
-    return 'La cuenta se intento crear, pero Supabase no pudo enviar el correo de confirmacion.'
-  }
-
-  if (message.includes('fetch') || message.includes('network') || message.includes('failed to fetch')) {
-    return 'No se pudo conectar con Supabase. Intenta nuevamente.'
-  }
-
-  return error?.message || 'Ocurrio un error. Intenta nuevamente.'
 }
 
-function throwFriendlyError(error) {
-  console.error('Error de autenticacion:', error)
-  throw new Error(getFriendlyAuthMessage(error))
+function normalizeAuthRpcResponse(data, fallbackEmail = '') {
+  const row = Array.isArray(data) ? data[0] : data
+  const exito = Boolean(row?.exito)
+  const user = exito ? normalizeAuthUser(row, fallbackEmail) : null
+
+  return {
+    exito,
+    mensaje: row?.mensaje || '',
+    user,
+    idUsuario: user?.idUsuario ?? row?.id_usuario ?? null,
+    idCliente: user?.idCliente ?? row?.id_cliente ?? null,
+    email: user?.email ?? row?.email ?? fallbackEmail,
+    rol: user?.rol ?? normalizeRol(row?.rol),
+  }
 }
 
-export async function registrarUsuario({ email, password, metadata }) {
-  try {
-    const client = requireSupabase()
-    const { data, error } = await client.auth.signUp({ 
-      email, 
-      password,
-      options: {
-        data: metadata, 
-      }
-    })
-
-    if (error) throw error
-
-    return data
-  } catch (error) {
-    throwFriendlyError(error)
+function authErrorResult(mensaje) {
+  return {
+    exito: false,
+    mensaje,
+    user: null,
+    idUsuario: null,
+    idCliente: null,
+    email: '',
+    rol: '',
   }
 }
 
 export async function iniciarSesion({ email, password }) {
+  if (!supabase) {
+    return authErrorResult('No se pudo conectar con Supabase. Revisa la configuracion del entorno.')
+  }
+
   try {
-    const client = requireSupabase()
-    const { data, error } = await client.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.rpc('fn_login_usuario_api', {
+      p_email: email,
+      p_contrasenia: password,
+    })
 
-    if (error) throw error
+    if (error) {
+      console.error('Error tecnico al iniciar sesion:', error)
+      return authErrorResult('No se pudo iniciar sesion en este momento.')
+    }
 
-    return data
+    const result = normalizeAuthRpcResponse(data, email)
+
+    return {
+      ...result,
+      mensaje: result.mensaje || 'No se pudo iniciar sesion.',
+    }
   } catch (error) {
-    throwFriendlyError(error)
+    console.error('Error inesperado al iniciar sesion:', error)
+    return authErrorResult('No se pudo iniciar sesion en este momento.')
   }
 }
 
-export async function cerrarSesion() {
-  try {
-    const client = requireSupabase()
-    const { error } = await client.auth.signOut()
-
-    if (error) throw error
-  } catch (error) {
-    throwFriendlyError(error)
+export async function registrarUsuario({ email, password }) {
+  if (!supabase) {
+    return authErrorResult('No se pudo conectar con Supabase. Revisa la configuracion del entorno.')
   }
-}
-
-export async function obtenerSesionActual() {
-  if (!supabase) return null
 
   try {
-    const { data, error } = await supabase.auth.getSession()
+    const { data, error } = await supabase.rpc('fn_registrar_cliente_api', {
+      p_email: email,
+      p_contrasenia: password,
+    })
 
-    if (error) throw error
+    if (error) {
+      console.error('Error tecnico al registrar cliente:', error)
+      return authErrorResult('No se pudo registrar la cuenta en este momento.')
+    }
 
-    return data.session
+    const result = normalizeAuthRpcResponse(data, email)
+
+    return {
+      ...result,
+      mensaje: result.mensaje || 'No se pudo registrar la cuenta.',
+    }
   } catch (error) {
-    console.error('No se pudo obtener la sesion actual:', error)
-    return null
-  }
-}
-
-export async function obtenerUsuarioActual() {
-  if (!supabase) return null
-
-  try {
-    const { data, error } = await supabase.auth.getUser()
-
-    if (error) throw error
-
-    return data.user
-  } catch (error) {
-    console.error('No se pudo obtener el usuario actual:', error)
-    return null
+    console.error('Error inesperado al registrar cliente:', error)
+    return authErrorResult('No se pudo registrar la cuenta en este momento.')
   }
 }

@@ -1,85 +1,113 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
-import {
-  cerrarSesion,
-  iniciarSesion,
-  obtenerSesionActual,
-  registrarUsuario,
-} from '../services/authService'
+import { createContext, useContext, useMemo, useState } from 'react'
+import { iniciarSesion, registrarUsuario } from '../services/authService'
 
 const AuthContext = createContext(null)
+const AUTH_STORAGE_KEY = 'autonexo_usuario'
+
+function normalizeRol(rol) {
+  return String(rol || '').trim().toUpperCase()
+}
+
+function canUseStorage() {
+  return typeof window !== 'undefined' && Boolean(window.localStorage)
+}
+
+function getStoredUser() {
+  if (!canUseStorage()) return null
+
+  try {
+    const rawUser = window.localStorage.getItem(AUTH_STORAGE_KEY)
+    return rawUser ? JSON.parse(rawUser) : null
+  } catch {
+    return null
+  }
+}
+
+function saveStoredUser(user) {
+  if (!canUseStorage()) return
+  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
+}
+
+function removeStoredUser() {
+  if (!canUseStorage()) return
+  window.localStorage.removeItem(AUTH_STORAGE_KEY)
+}
+
+function normalizeUser(user) {
+  if (!user) return null
+
+  return {
+    idUsuario: user.idUsuario ?? null,
+    idCliente: user.idCliente ?? null,
+    email: user.email ?? '',
+    rol: normalizeRol(user.rol),
+  }
+}
 
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null)
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState(() => normalizeUser(getStoredUser()))
+  const loading = false
 
-  useEffect(() => {
-    let active = true
-    let subscription
+  async function login({ email, password }) {
+    const result = await iniciarSesion({ email, password })
 
-    async function loadSession() {
-      const currentSession = await obtenerSesionActual()
+    if (result.exito) {
+      const nextUser = normalizeUser(result.user)
+      saveStoredUser(nextUser)
+      setUser(nextUser)
 
-      if (!active) return
-
-      setSession(currentSession)
-      setUser(currentSession?.user || null)
-      setLoading(false)
+      return {
+        ...result,
+        user: nextUser,
+      }
     }
 
-    loadSession()
-
-    if (supabase) {
-      const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-        setSession(nextSession)
-        setUser(nextSession?.user || null)
-        setLoading(false)
-      })
-
-      subscription = data.subscription
-    }
-
-    return () => {
-      active = false
-      subscription?.unsubscribe()
-    }
-  }, [])
-
-  async function login(credentials) {
-    const data = await iniciarSesion(credentials)
-    setSession(data.session)
-    setUser(data.user)
-    return data
+    return result
   }
 
-  async function register({ email, password, metadata }) {
-    const data = await registrarUsuario({ email, password, metadata })
-    setSession(data.session)
-    setUser(data.session?.user || null)
-    return data
+  async function register({ email, password }) {
+    const result = await registrarUsuario({ email, password })
+
+    if (result.exito) {
+      const nextUser = normalizeUser(result.user)
+      saveStoredUser(nextUser)
+      setUser(nextUser)
+
+      return {
+        ...result,
+        user: nextUser,
+      }
+    }
+
+    return result
   }
 
-  async function logout() {
-    await cerrarSesion()
-    setSession(null)
+  function logout() {
+    removeStoredUser()
     setUser(null)
   }
+
+  const isAuthenticated = Boolean(user)
+  const isAdmin = normalizeRol(user?.rol) === 'ADMIN'
+  const isCliente = normalizeRol(user?.rol) === 'CLIENTE'
 
   const value = useMemo(
     () => ({
       user,
       usuario: user,
-      session,
-      sesion: session,
+      session: null,
+      sesion: null,
       loading,
       login,
       registro: register,
       register,
       logout,
+      isAuthenticated,
+      isAdmin,
+      isCliente,
     }),
-    [user, session, loading],
+    [user, loading, isAuthenticated, isAdmin, isCliente],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
