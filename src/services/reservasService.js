@@ -38,7 +38,9 @@ export function getReservas() {
 }
 
 export function getMisReservas() {
-  // TODO: Leer reservas del usuario autenticado desde Supabase.
+  // TODO: Vincular el usuario autenticado de Supabase Auth con public.cliente.
+  // Auth usa UUID en auth.users y el modelo del dominio usa id_cliente entero.
+  // No mezclar esos identificadores hasta definir la relacion en la base.
   return getStoredReservas()
 }
 
