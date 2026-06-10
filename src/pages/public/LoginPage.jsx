@@ -1,81 +1,80 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
-import { useAuth } from '../../context/AuthContext'
+import { supabase } from '../../lib/supabaseClient' // Asegurate de que la ruta sea correcta
 
 function LoginPage() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
 
-  async function handleSubmit(event) {
-    event.preventDefault()
-    setError('')
+  const handleLogin = async (e) => {
+    e.preventDefault()
+    setLoading(true)
 
-    if (!email.trim() || !password) {
-      setError('Ingresa tu email y contrasena.')
+    // 1. Autenticamos con Supabase
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    setLoading(false)
+
+    if (error) {
+      alert('Error al iniciar sesión: ' + error.message)
       return
     }
 
-    try {
-      setLoading(true)
-      await login({ email: email.trim(), password })
-      const nextPath = location.state?.from?.pathname || '/vehiculos'
-      navigate(nextPath, { replace: true })
-    } catch (authError) {
-      setError(authError.message)
-    } finally {
-      setLoading(false)
+    // 2. Extraemos el rol desde los metadatos (si no tiene, asumimos que es cliente)
+    const rol = data.user.user_metadata?.rol || 'cliente'
+
+    // 3. Redirigimos según el rol
+    if (rol === 'admin') {
+      navigate('/admin') // Redirige al AdminDashboardPage
+    } else {
+      navigate('/vehiculos') // Redirige a la vista pública de VehiculosPage
     }
   }
 
   return (
     <main className="mx-auto flex min-h-[calc(100vh-78px)] max-w-7xl items-center justify-center px-4 py-10 sm:px-6 lg:px-8">
       <section className="w-full max-w-md rounded-lg border border-[var(--color-border)] bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-bold text-[var(--color-primary)]">Iniciar sesion</h1>
+        <h1 className="text-2xl font-bold text-[var(--color-primary)]">Iniciar sesión</h1>
         <p className="mt-2 text-sm text-[var(--color-muted)]">
-          Accede para gestionar tus reservas online.
+          Accedé para gestionar tus reservas online.
         </p>
 
-        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+        <form onSubmit={handleLogin} className="mt-6 space-y-4">
           <label className="space-y-2 text-sm font-semibold text-[var(--color-muted)]">
             Email
-            <input
-              autoComplete="email"
-              className="field"
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="cliente@email.com"
-              type="email"
+            <input 
+              type="email" 
+              className="field" 
+              placeholder="cliente@email.com" 
               value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
             />
           </label>
           <label className="space-y-2 text-sm font-semibold text-[var(--color-muted)]">
-            Contrasena
-            <input
-              autoComplete="current-password"
-              className="field"
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Ingresa tu contrasena"
-              type="password"
+            Contraseña
+            <input 
+              type="password" 
+              className="field" 
+              placeholder="Ingresá tu contraseña" 
               value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
             />
           </label>
-          {error && (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-              {error}
-            </p>
-          )}
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Ingresando...' : 'Iniciar sesion'}
+            {loading ? 'Iniciando...' : 'Iniciar sesión'}
           </Button>
         </form>
 
         <p className="mt-5 text-center text-sm text-[var(--color-muted)]">
-          No tenes cuenta?{' '}
+          ¿No tenés cuenta?{' '}
           <Link to="/registro" className="font-bold text-[var(--color-accent)]">
             Registrarse
           </Link>
