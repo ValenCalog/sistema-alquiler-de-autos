@@ -67,10 +67,16 @@ function throwFriendlyError(error) {
   throw new Error(getFriendlyAuthMessage(error))
 }
 
-export async function registrarUsuario({ email, password }) {
+export async function registrarUsuario({ email, password, metadata }) {
   try {
     const client = requireSupabase()
-    const { data, error } = await client.auth.signUp({ email, password })
+    const { data, error } = await client.auth.signUp({ 
+      email, 
+      password,
+      options: {
+        data: metadata, 
+      }
+    })
 
     if (error) throw error
 

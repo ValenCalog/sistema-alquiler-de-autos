@@ -54,8 +54,8 @@ export function AuthProvider({ children }) {
     return data
   }
 
-  async function register(credentials) {
-    const data = await registrarUsuario(credentials)
+  async function register({ email, password, metadata }) {
+    const data = await registrarUsuario({ email, password, metadata })
     setSession(data.session)
     setUser(data.session?.user || null)
     return data
