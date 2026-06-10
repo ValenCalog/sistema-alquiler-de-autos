@@ -34,6 +34,18 @@ function normalizeAlquilerRpcResponse(data) {
   }
 }
 
+function normalizeFinalizarAlquilerRpcResponse(data) {
+  const row = Array.isArray(data) ? data[0] : data
+
+  return {
+    exito: Boolean(row?.exito),
+    mensaje: row?.mensaje || '',
+    idFactura: row?.id_factura ?? null,
+    montoAlquiler: row?.monto_alquiler ?? null,
+    montoExtra: row?.monto_extra ?? null,
+  }
+}
+
 function formatDate(value) {
   if (!value) return ''
   return String(value).slice(0, 10)
@@ -157,6 +169,58 @@ export async function procesarAlquilerDesdeReserva({ idReserva, kilometrajeInici
   }
 }
 
+export async function finalizarAlquiler({ idAlquiler, kilometrajeFin }) {
+  if (!supabase) {
+    return {
+      exito: false,
+      mensaje: 'No se pudo finalizar el alquiler en este momento.',
+      idFactura: null,
+      montoAlquiler: null,
+      montoExtra: null,
+    }
+  }
+
+  try {
+    console.log('Finalizando alquiler:', idAlquiler, kilometrajeFin)
+
+    const { data, error } = await supabase.rpc('fn_finalizar_alquiler_api', {
+      p_id_alquiler: idAlquiler,
+      p_kilometraje_fin: kilometrajeFin,
+    })
+
+    console.log('Respuesta finalizar alquiler:', data)
+
+    if (error) {
+      console.log('Error finalizar alquiler:', error)
+      console.error('Error tecnico al finalizar alquiler:', error)
+      return {
+        exito: false,
+        mensaje: 'No se pudo finalizar el alquiler en este momento.',
+        idFactura: null,
+        montoAlquiler: null,
+        montoExtra: null,
+      }
+    }
+
+    const result = normalizeFinalizarAlquilerRpcResponse(data)
+
+    return {
+      ...result,
+      mensaje: result.mensaje || 'No se pudo finalizar el alquiler.',
+    }
+  } catch (error) {
+    console.log('Error finalizar alquiler:', error)
+    console.error('Error inesperado al finalizar alquiler:', error)
+    return {
+      exito: false,
+      mensaje: 'No se pudo finalizar el alquiler en este momento.',
+      idFactura: null,
+      montoAlquiler: null,
+      montoExtra: null,
+    }
+  }
+}
+
 export async function getAlquileresAdmin() {
   if (!supabase) {
     return fallbackResult(getFallbackAlquileres(), 'No hay variables de entorno de Supabase configuradas.')
@@ -199,4 +263,3 @@ export async function getAlquileresAdmin() {
     return fallbackResult(getFallbackAlquileres(), error.message)
   }
 }
-

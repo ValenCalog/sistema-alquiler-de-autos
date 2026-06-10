@@ -23,6 +23,7 @@ export async function getDashboardStats() {
     ).length,
     totalReservas: reservas.length,
     alquileresEnCurso: alquileres.filter((alquiler) => alquiler.estado === 'En curso').length,
+    alquileresFinalizados: alquileres.filter((alquiler) => alquiler.estado === 'Finalizado').length,
     vehiculosEnMantenimiento: vehiculosCatalogo.filter((vehiculo) =>
       String(vehiculo.estadoNormalizado || vehiculo.estado).toLowerCase().includes('mantenimiento'),
     ).length,

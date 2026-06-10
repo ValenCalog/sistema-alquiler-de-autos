@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Button from '../../components/ui/Button'
-import { getAlquileresAdmin } from '../../services/alquileresService'
+import { finalizarAlquiler, getAlquileresAdmin } from '../../services/alquileresService'
 
 const estadosAlquilerBase = ['En curso', 'Finalizado']
 
@@ -8,16 +8,39 @@ function formatValue(value) {
   return value !== null && value !== undefined && value !== '' ? value : 'No disponible'
 }
 
+function formatCurrency(value) {
+  return value !== null && value !== undefined ? `$${Number(value).toLocaleString('es-AR')}` : '$0'
+}
+
+function estaEnCurso(alquiler) {
+  return String(alquiler.estado || '').trim().toLowerCase() === 'en curso'
+}
+
 function AdminAlquileresPage() {
   const [estado, setEstado] = useState('')
   const [alquileres, setAlquileres] = useState([])
   const [loading, setLoading] = useState(true)
   const [fallbackMessage, setFallbackMessage] = useState('')
+  const [actionMessage, setActionMessage] = useState(null)
+  const [finalizingId, setFinalizingId] = useState(null)
+
+  async function loadAlquileres() {
+    setLoading(true)
+    const result = await getAlquileresAdmin()
+
+    setAlquileres(result.data)
+    setFallbackMessage(
+      result.usedFallback
+        ? 'No se pudieron cargar alquileres desde Supabase. Se muestran datos de respaldo.'
+        : '',
+    )
+    setLoading(false)
+  }
 
   useEffect(() => {
     let ignore = false
 
-    async function loadAlquileres() {
+    async function loadInitialAlquileres() {
       const result = await getAlquileresAdmin()
 
       if (!ignore) {
@@ -31,7 +54,7 @@ function AdminAlquileresPage() {
       }
     }
 
-    loadAlquileres()
+    loadInitialAlquileres()
 
     return () => {
       ignore = true
@@ -50,6 +73,74 @@ function AdminAlquileresPage() {
 
   function handleAction(action, alquilerId) {
     window.alert(`${action}: ${alquilerId}`)
+  }
+
+  async function handleFinalizarAlquiler(alquiler) {
+    const rawKilometraje = window.prompt(
+      `Ingresá el kilometraje final para el alquiler #${alquiler.idAlquiler}`,
+    )
+    if (rawKilometraje === null) return
+
+    const kilometrajeFin = Number(rawKilometraje.trim())
+    const kilometrajeInicio = Number(alquiler.kilometrajeInicio)
+    const tieneKilometrajeInicio =
+      alquiler.kilometrajeInicio !== null &&
+      alquiler.kilometrajeInicio !== undefined &&
+      alquiler.kilometrajeInicio !== '' &&
+      Number.isFinite(kilometrajeInicio)
+
+    if (
+      rawKilometraje.trim() === '' ||
+      !Number.isInteger(kilometrajeFin) ||
+      kilometrajeFin < 0
+    ) {
+      setActionMessage({
+        type: 'error',
+        text: 'Ingresá un kilometraje final válido, sin decimales y mayor o igual a 0.',
+      })
+      return
+    }
+
+    if (tieneKilometrajeInicio && kilometrajeFin < kilometrajeInicio) {
+      setActionMessage({
+        type: 'error',
+        text: `El kilometraje final no puede ser menor al kilometraje inicial (${kilometrajeInicio} km).`,
+      })
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Confirmás finalizar el alquiler #${alquiler.idAlquiler} con ${kilometrajeFin} km finales?`,
+    )
+    if (!confirmed) return
+
+    setFinalizingId(alquiler.idAlquiler)
+    setActionMessage(null)
+
+    const result = await finalizarAlquiler({
+      idAlquiler: alquiler.idAlquiler,
+      kilometrajeFin,
+    })
+
+    setFinalizingId(null)
+
+    if (!result.exito) {
+      setActionMessage({
+        type: 'error',
+        text: result.mensaje || 'No se pudo finalizar el alquiler.',
+      })
+      return
+    }
+
+    setActionMessage({
+      type: 'success',
+      text: `${
+        result.mensaje || 'Alquiler finalizado correctamente.'
+      } Factura N° ${result.idFactura}. Monto alquiler: ${formatCurrency(
+        result.montoAlquiler,
+      )}. Recargo: ${formatCurrency(result.montoExtra)}.`,
+    })
+    await loadAlquileres()
   }
 
   return (
@@ -74,6 +165,18 @@ function AdminAlquileresPage() {
       {fallbackMessage && (
         <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
           {fallbackMessage}
+        </div>
+      )}
+
+      {actionMessage && (
+        <div
+          className={`mt-5 rounded-md border p-4 text-sm font-semibold ${
+            actionMessage.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {actionMessage.text}
         </div>
       )}
 
@@ -170,9 +273,12 @@ function AdminAlquileresPage() {
                         <Button
                           type="button"
                           variant="ghost"
-                          onClick={() => handleAction('Finalizar alquiler', alquiler.idAlquiler)}
+                          disabled={finalizingId === alquiler.idAlquiler || !estaEnCurso(alquiler)}
+                          onClick={() => handleFinalizarAlquiler(alquiler)}
                         >
-                          Finalizar
+                          {finalizingId === alquiler.idAlquiler
+                            ? 'Finalizando...'
+                            : 'Finalizar alquiler'}
                         </Button>
                       </div>
                     </td>

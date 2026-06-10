@@ -12,6 +12,7 @@ const emptyStats = {
   reservasActivas: 0,
   totalReservas: 0,
   alquileresEnCurso: 0,
+  alquileresFinalizados: 0,
   vehiculosEnMantenimiento: 0,
   facturasEmitidas: 0,
   vehiculosAtrasados: 0,
@@ -90,7 +91,7 @@ function AdminDashboardPage() {
         <StatCard
           label="Alquileres en curso"
           value={loading ? '-' : stats.alquileresEnCurso}
-          detail="Unidades fuera de sucursal"
+          detail={`${loading ? '-' : stats.alquileresFinalizados} finalizados`}
         />
         <StatCard
           label="En mantenimiento"
