@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 const adminLinks = [
   { to: '/', label: 'Vista cliente' },
   { to: '/admin', label: 'Dashboard' },
+  { to: '/admin/vehiculos', label: 'Vehiculos' },
   { to: '/admin/reservas', label: 'Reservas' },
   { to: '/admin/alquileres', label: 'Alquileres' },
 ]

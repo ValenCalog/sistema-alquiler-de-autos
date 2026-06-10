@@ -25,6 +25,31 @@ function supabaseResult(data) {
   }
 }
 
+function catalogResult(data, error = '') {
+  return {
+    data,
+    error,
+    source: 'supabase',
+    usedFallback: false,
+  }
+}
+
+function catalogErrorResult(error) {
+  console.error('Error al cargar catalogo:', error)
+
+  return catalogResult([], error.message || 'No se pudo cargar el catalogo.')
+}
+
+function normalizeCrearVehiculoRpcResponse(data) {
+  const row = Array.isArray(data) ? data[0] : data
+
+  return {
+    exito: Boolean(row?.exito),
+    mensaje: row?.mensaje || '',
+    idVehiculo: row?.id_vehiculo ?? null,
+  }
+}
+
 function hasMeaningfulFilter(value, ignoredValues = []) {
   if (value === undefined || value === null) return false
 
@@ -89,6 +114,78 @@ function normalizeVehiculoCatalogo(row) {
     descripcion: row.descripcion ?? '',
     imagenes,
     imagenPrincipal,
+  }
+}
+
+function normalizeMarca(row) {
+  const id = row.id_marca ?? row.id
+  const nombre = row.marca ?? row.nombre ?? row.nombre_marca ?? row.descripcion ?? `Marca #${id}`
+
+  return {
+    id: String(id),
+    idMarca: id,
+    nombre,
+  }
+}
+
+function normalizeModelo(row, marcasById = new Map()) {
+  const id = row.id_modelo ?? row.id
+  const idMarca = row.id_marca ?? row.idMarca ?? null
+  const modelo = row.modelo ?? row.nombre ?? row.nombre_modelo ?? row.descripcion ?? `Modelo #${id}`
+  const marca = row.marca ?? row.nombre_marca ?? marcasById.get(String(idMarca))?.nombre ?? ''
+
+  return {
+    id: String(id),
+    idModelo: id,
+    idMarca,
+    modelo,
+    marca,
+    label: [marca, modelo].filter(Boolean).join(' ') || modelo,
+  }
+}
+
+function normalizeTipoVehiculo(row) {
+  const id = row.id_tipo_vehiculo ?? row.id_tipovehiculo ?? row.id
+  const nombre =
+    row.tipo ?? row.nombre ?? row.nombre_tipo ?? row.descripcion ?? `Tipo #${id}`
+
+  return {
+    id: String(id),
+    idTipoVehiculo: id,
+    nombre,
+  }
+}
+
+function normalizeSucursal(row) {
+  const id = row.id_sucursal ?? row.id
+  const nombre = row.sucursal ?? row.nombre ?? row.nombre_sucursal ?? row.descripcion ?? `Sucursal #${id}`
+
+  return {
+    id: String(id),
+    idSucursal: id,
+    nombre,
+  }
+}
+
+function normalizeEstadoVehiculo(row) {
+  const id = row.id_estado ?? row.id_estado_vehiculo ?? row.id
+  const nombre =
+    row.estado ?? row.nombre ?? row.nombre_estado ?? row.descripcion ?? `Estado #${id}`
+
+  return {
+    id: String(id),
+    idEstado: id,
+    nombre,
+    normalized: normalizeFilterValue(nombre),
+  }
+}
+
+function normalizeTarifa(row) {
+  return {
+    id: String(row.id_tarifa ?? row.id),
+    idSucursal: row.id_sucursal ?? null,
+    idTipoVehiculo: row.id_tipo_vehiculo ?? row.id_tipovehiculo ?? null,
+    precioDiario: row.precio_diario != null ? Number(row.precio_diario) : null,
   }
 }
 
@@ -223,5 +320,168 @@ export async function getVehiculosDisponibles(filtros = {}) {
     return supabaseResult(data)
   } catch (error) {
     return fallbackResult(filterVehiculos(vehiculos, filtros), error.message)
+  }
+}
+
+export async function crearVehiculo({
+  idModelo,
+  confort,
+  idTipoVehiculo,
+  idEstado,
+  idSucursal,
+  imagenes,
+}) {
+  if (!supabase) {
+    return {
+      exito: false,
+      mensaje: 'No se pudo crear el vehiculo en este momento.',
+      idVehiculo: null,
+    }
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('fn_crear_vehiculo_api', {
+      p_id_modelo: idModelo,
+      p_confort: confort,
+      p_id_tipo_vehiculo: idTipoVehiculo,
+      p_id_estado: idEstado,
+      p_id_sucursal: idSucursal,
+      p_imagenes: imagenes,
+    })
+
+    if (error) {
+      console.error('Error tecnico al crear vehiculo:', error)
+      return {
+        exito: false,
+        mensaje: 'No se pudo crear el vehiculo en este momento.',
+        idVehiculo: null,
+      }
+    }
+
+    const result = normalizeCrearVehiculoRpcResponse(data)
+
+    return {
+      ...result,
+      mensaje: result.mensaje || 'No se pudo crear el vehiculo.',
+    }
+  } catch (error) {
+    console.error('Error inesperado al crear vehiculo:', error)
+    return {
+      exito: false,
+      mensaje: 'No se pudo crear el vehiculo en este momento.',
+      idVehiculo: null,
+    }
+  }
+}
+
+export async function getMarcas() {
+  if (!supabase) return catalogResult([], 'No hay variables de entorno de Supabase configuradas.')
+
+  try {
+    const { data, error } = await supabase.from('marca').select('*').order('id_marca')
+    if (error) throw error
+    return catalogResult((data || []).map(normalizeMarca))
+  } catch (error) {
+    return catalogErrorResult(error)
+  }
+}
+
+export async function getModelos() {
+  if (!supabase) return catalogResult([], 'No hay variables de entorno de Supabase configuradas.')
+
+  try {
+    const marcasResult = await getMarcas()
+    const marcasById = new Map(marcasResult.data.map((marca) => [String(marca.idMarca), marca]))
+    const { data, error } = await supabase.from('modelo').select('*').order('id_modelo')
+
+    if (error) throw error
+
+    return catalogResult((data || []).map((modelo) => normalizeModelo(modelo, marcasById)))
+  } catch (error) {
+    return catalogErrorResult(error)
+  }
+}
+
+export async function getTiposVehiculoCatalogo() {
+  if (!supabase) return catalogResult([], 'No hay variables de entorno de Supabase configuradas.')
+
+  try {
+    const { data, error } = await supabase
+      .from('tipovehiculo')
+      .select('*')
+      .order('id_tipo_vehiculo')
+
+    if (error) throw error
+
+    return catalogResult((data || []).map(normalizeTipoVehiculo))
+  } catch (error) {
+    return catalogErrorResult(error)
+  }
+}
+
+export async function getSucursalesCatalogo() {
+  if (!supabase) return catalogResult([], 'No hay variables de entorno de Supabase configuradas.')
+
+  try {
+    const { data, error } = await supabase.from('sucursal').select('*').order('id_sucursal')
+
+    if (error) throw error
+
+    return catalogResult((data || []).map(normalizeSucursal))
+  } catch (error) {
+    return catalogErrorResult(error)
+  }
+}
+
+export async function getEstadosVehiculoCatalogo() {
+  if (!supabase) return catalogResult([], 'No hay variables de entorno de Supabase configuradas.')
+
+  try {
+    const { data, error } = await supabase
+      .from('estadovehiculo')
+      .select('*')
+      .order('id_estado')
+
+    if (error) throw error
+
+    return catalogResult((data || []).map(normalizeEstadoVehiculo))
+  } catch (error) {
+    return catalogErrorResult(error)
+  }
+}
+
+export async function getTarifas() {
+  if (!supabase) return catalogResult([], 'No hay variables de entorno de Supabase configuradas.')
+
+  try {
+    const { data, error } = await supabase.from('tarifa').select('*')
+
+    if (error) throw error
+
+    return catalogResult((data || []).map(normalizeTarifa))
+  } catch (error) {
+    return catalogErrorResult(error)
+  }
+}
+
+export async function getCatalogosVehiculo() {
+  const [modelos, tipos, sucursales, estados, tarifas] = await Promise.all([
+    getModelos(),
+    getTiposVehiculoCatalogo(),
+    getSucursalesCatalogo(),
+    getEstadosVehiculoCatalogo(),
+    getTarifas(),
+  ])
+
+  return {
+    modelos,
+    tipos,
+    sucursales,
+    estados,
+    tarifas,
+    error: [modelos, tipos, sucursales, estados, tarifas]
+      .map((result) => result.error)
+      .filter(Boolean)
+      .join(' '),
   }
 }

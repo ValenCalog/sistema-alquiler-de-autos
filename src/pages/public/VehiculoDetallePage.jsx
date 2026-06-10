@@ -2,8 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
-import { calcularDiasReserva, crearReserva } from '../../services/reservasService'
+import {
+  calcularDiasReserva,
+  crearReserva,
+  guardarReservaLocal,
+} from '../../services/reservasService'
 import { getVehiculoById } from '../../services/vehiculosService'
+
+// TODO: Reemplazar por el id del cliente autenticado cuando se implemente Supabase Auth.
+const CLIENTE_DEMO_ID = 1
 
 function VehiculoDetallePage() {
   const { id } = useParams()
@@ -14,6 +21,7 @@ function VehiculoDetallePage() {
   const [reservation, setReservation] = useState({ inicio: '', devolucion: '' })
   const [error, setError] = useState('')
   const [createdReservation, setCreatedReservation] = useState(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     let ignore = false
@@ -84,7 +92,7 @@ function VehiculoDetallePage() {
     setError('')
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
     const nextReservation = {
@@ -105,19 +113,52 @@ function VehiculoDetallePage() {
       return
     }
 
-    try {
-      const nuevaReserva = crearReserva({
-        vehiculoId: vehicle.id,
-        vehiculo: vehicle,
-        inicio: nextReservation.inicio,
-        devolucion: nextReservation.devolucion,
-      })
+    setIsSubmitting(true)
 
-      setCreatedReservation(nuevaReserva)
-      setError('')
-    } catch (serviceError) {
-      setError(serviceError.message)
+    // TODO: Permitir seleccionar horarios reales de retiro y devolucion.
+    const fechaInicioTimestamp = `${nextReservation.inicio} 10:00:00`
+    const fechaFinTimestamp = `${nextReservation.devolucion} 10:00:00`
+
+    const result = await crearReserva({
+      idCliente: CLIENTE_DEMO_ID,
+      idVehiculo: Number(vehicle.id),
+      fechaInicio: fechaInicioTimestamp,
+      fechaFin: fechaFinTimestamp,
+    })
+
+    setIsSubmitting(false)
+
+    if (!result.exito) {
+      setError(result.mensaje || 'No se pudo registrar la reserva.')
+      return
     }
+
+    const reservaLocal = guardarReservaLocal({
+      id: `R-${result.idReserva}`,
+      idReserva: result.idReserva,
+      cliente: 'Cliente demo',
+      idVehiculo: Number(vehicle.id),
+      vehiculoId: vehicle.id,
+      marca: vehicle.marca,
+      modelo: vehicle.modelo,
+      vehiculo: `${vehicle.marca} ${vehicle.modelo}`,
+      tipo: vehicle.tipo,
+      sucursal: vehicle.sucursal,
+      fechaInicio: nextReservation.inicio,
+      fechaFin: nextReservation.devolucion,
+      inicio: nextReservation.inicio,
+      devolucion: nextReservation.devolucion,
+      estado: 'Pendiente',
+      diasEstimados: formDays,
+      costoEstimado: formDays * (vehicle.precioDiario || 0),
+      creadaEn: new Date().toISOString(),
+    })
+
+    setCreatedReservation({
+      ...reservaLocal,
+      mensaje: result.mensaje,
+    })
+    setError('')
   }
 
   return (
@@ -265,8 +306,8 @@ function VehiculoDetallePage() {
               </div>
             )}
 
-            <Button type="submit" className="mt-5 w-full">
-              Confirmar reserva
+            <Button type="submit" className="mt-5 w-full" disabled={isSubmitting}>
+              {isSubmitting ? 'Registrando reserva...' : 'Confirmar reserva'}
             </Button>
           </form>
         </section>
@@ -282,8 +323,8 @@ function VehiculoDetallePage() {
               Tu solicitud fue guardada correctamente
             </h2>
             <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
-              Creamos la reserva {createdReservation.id} para {createdReservation.vehiculo}.
-              Ya podes consultarla desde Mis reservas.
+              Creamos la reserva #{createdReservation.idReserva} para{' '}
+              {createdReservation.vehiculo}. Ya podes consultarla desde Mis reservas.
             </p>
             <div className="mt-5 rounded-md bg-[var(--color-bg)] p-4 text-sm text-[var(--color-muted)]">
               <p>
