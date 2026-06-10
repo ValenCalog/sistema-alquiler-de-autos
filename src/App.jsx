@@ -4,6 +4,7 @@ import PublicLayout from './components/layout/PublicLayout'
 import AdminAlquileresPage from './pages/admin/AdminAlquileresPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminReservasPage from './pages/admin/AdminReservasPage'
+import AdminVehiculosPage from './pages/admin/AdminVehiculosPage'
 import HomeCliente from './pages/public/HomeCliente'
 import LoginPage from './pages/public/LoginPage'
 import MisReservasPage from './pages/public/MisReservasPage'
@@ -27,6 +28,7 @@ function App() {
         </Route>
         <Route element={<AdminLayout />}>
           <Route path="/admin" element={<AdminDashboardPage />} />
+          <Route path="/admin/vehiculos" element={<AdminVehiculosPage />} />
           <Route path="/admin/reservas" element={<AdminReservasPage />} />
           <Route path="/admin/alquileres" element={<AdminAlquileresPage />} />
         </Route>
