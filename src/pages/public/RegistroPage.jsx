@@ -13,6 +13,7 @@ function RegistroPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(event) {
@@ -60,14 +61,14 @@ function RegistroPage() {
         apellido: apellido.trim(),
       })
 
-      if (data?.exito) {
+      if (data?.exito || data?.session) {
         navigate('/vehiculos', { replace: true })
         return
       }
 
       setError(data?.mensaje || 'No se pudo crear la cuenta.')
     } catch (authError) {
-      setError(authError.message || 'Error al registrar usuario.')
+      setError(authError.message || 'No se pudo crear la cuenta.')
     } finally {
       setLoading(false)
     }
@@ -77,6 +78,7 @@ function RegistroPage() {
     <main className="mx-auto flex min-h-[calc(100vh-78px)] max-w-7xl items-center justify-center px-4 py-10 sm:px-6 lg:px-8">
       <section className="w-full max-w-md rounded-lg border border-[var(--color-border)] bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-bold text-[var(--color-primary)]">Crear cuenta</h1>
+
         <p className="mt-2 text-sm text-[var(--color-muted)]">
           Registrate para solicitar reservas y consultar tus alquileres.
         </p>
