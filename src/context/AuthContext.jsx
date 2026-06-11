@@ -8,6 +8,47 @@ import {
 } from '../services/authService'
 
 const AuthContext = createContext(null)
+const AUTH_STORAGE_KEY = 'autonexo_usuario'
+
+function normalizeRol(rol) {
+  return String(rol || '').trim().toUpperCase()
+}
+
+function canUseStorage() {
+  return typeof window !== 'undefined' && Boolean(window.localStorage)
+}
+
+function getStoredUser() {
+  if (!canUseStorage()) return null
+
+  try {
+    const rawUser = window.localStorage.getItem(AUTH_STORAGE_KEY)
+    return rawUser ? JSON.parse(rawUser) : null
+  } catch {
+    return null
+  }
+}
+
+function saveStoredUser(user) {
+  if (!canUseStorage()) return
+  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
+}
+
+function removeStoredUser() {
+  if (!canUseStorage()) return
+  window.localStorage.removeItem(AUTH_STORAGE_KEY)
+}
+
+function normalizeUser(user) {
+  if (!user) return null
+
+  return {
+    idUsuario: user.idUsuario ?? null,
+    idCliente: user.idCliente ?? null,
+    email: user.email ?? '',
+    rol: normalizeRol(user.rol),
+  }
+}
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
@@ -51,12 +92,16 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  const isAuthenticated = Boolean(user)
+  const isAdmin = normalizeRol(user?.rol) === 'ADMIN'
+  const isCliente = normalizeRol(user?.rol) === 'CLIENTE'
+
   const value = useMemo(
     () => ({
       user,
       usuario: user,
-      session,
-      sesion: session,
+      session: null,
+      sesion: null,
       loading,
 
       login,
@@ -68,7 +113,7 @@ export function AuthProvider({ children }) {
       isAdmin: user?.rol?.toUpperCase() === 'ADMIN',
       isCliente: user?.rol?.toUpperCase() === 'CLIENTE',
     }),
-    [user, session, loading],
+    [user, loading, isAuthenticated, isAdmin, isCliente],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

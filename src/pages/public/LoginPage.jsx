@@ -2,10 +2,13 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/AuthContext'
 
 function LoginPage() {
+  const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -56,7 +59,7 @@ function LoginPage() {
         </h1>
 
         <p className="mt-2 text-sm text-[var(--color-muted)]">
-          Accedé para gestionar tus reservas online.
+          Accede para gestionar tus reservas online.
         </p>
 
         <form onSubmit={handleLogin} className="mt-6 space-y-4">
@@ -91,12 +94,12 @@ function LoginPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Iniciando...' : 'Iniciar sesión'}
+            {loading ? 'Iniciando...' : 'Iniciar sesion'}
           </Button>
         </form>
 
         <p className="mt-5 text-center text-sm text-[var(--color-muted)]">
-          ¿No tenés cuenta?{' '}
+          No tenes cuenta?{' '}
           <Link to="/registro" className="font-bold text-[var(--color-accent)]">
             Registrarse
           </Link>

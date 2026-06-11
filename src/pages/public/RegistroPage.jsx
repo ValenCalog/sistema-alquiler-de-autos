@@ -13,7 +13,6 @@ function RegistroPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(event) {
