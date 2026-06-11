@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
+import VehicleImage from '../../components/ui/VehicleImage'
 import {
   calcularDiasReserva,
   crearReserva,
@@ -54,6 +55,16 @@ function VehiculoDetallePage() {
   )
 
   const estimatedCost = days * (vehicle?.precioDiario || 0)
+  const galleryImages = useMemo(() => {
+    if (!vehicle) return []
+
+    return [...new Set([...(vehicle.imagenes || []), vehicle.imagenPrincipal])]
+      .map((image) => String(image || '').trim())
+      .filter((image) => image.length > 0)
+      .filter((image) => !image.toLowerCase().includes('sin imagen'))
+  }, [vehicle])
+
+  const mainImage = galleryImages[selectedImage] || galleryImages[0] || null
 
   if (loadingVehicle) {
     return (
@@ -179,32 +190,34 @@ function VehiculoDetallePage() {
       <div className="mt-6 grid gap-8 lg:grid-cols-[1.08fr_0.92fr]">
         <section>
           <div className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-white shadow-sm">
-            <img
-              src={vehicle.imagenes[selectedImage] || vehicle.imagenPrincipal}
+            <VehicleImage
+              src={mainImage}
               alt={`${vehicle.marca} ${vehicle.modelo}`}
               className="aspect-[16/10] w-full object-cover"
             />
           </div>
-          <div className="mt-3 grid grid-cols-5 gap-3">
-            {(vehicle.imagenes.length > 0 ? vehicle.imagenes : [vehicle.imagenPrincipal]).map((image, index) => (
-              <button
-                key={image}
-                type="button"
-                onClick={() => setSelectedImage(index)}
-                className={`overflow-hidden rounded-md border ${
-                  selectedImage === index
-                    ? 'border-[var(--color-accent)] ring-2 ring-red-100'
-                    : 'border-[var(--color-border)]'
-                }`}
-              >
-                <img
-                  src={image}
-                  alt={`Vista ${index + 1} de ${vehicle.marca} ${vehicle.modelo}`}
-                  className="aspect-[4/3] w-full object-cover"
-                />
-              </button>
-            ))}
-          </div>
+          {galleryImages.length > 0 && (
+            <div className="mt-3 grid grid-cols-5 gap-3">
+              {galleryImages.map((image, index) => (
+                <button
+                  key={image}
+                  type="button"
+                  onClick={() => setSelectedImage(index)}
+                  className={`overflow-hidden rounded-md border ${
+                    selectedImage === index
+                      ? 'border-[var(--color-accent)] ring-2 ring-red-100'
+                      : 'border-[var(--color-border)]'
+                  }`}
+                >
+                  <VehicleImage
+                    src={image}
+                    alt={`Vista ${index + 1} de ${vehicle.marca} ${vehicle.modelo}`}
+                    className="aspect-[4/3] w-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="space-y-5">
