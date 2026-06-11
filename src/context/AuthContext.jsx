@@ -1,6 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
 import {
   cerrarSesion,
   iniciarSesion,
@@ -16,53 +15,38 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    let active = true
-    let subscription
+    const currentSession = obtenerSesionActual()
 
-    async function loadSession() {
-      const currentSession = await obtenerSesionActual()
-
-      if (!active) return
-
-      setSession(currentSession)
-      setUser(currentSession?.user || null)
-      setLoading(false)
-    }
-
-    loadSession()
-
-    if (supabase) {
-      const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-        setSession(nextSession)
-        setUser(nextSession?.user || null)
-        setLoading(false)
-      })
-
-      subscription = data.subscription
-    }
-
-    return () => {
-      active = false
-      subscription?.unsubscribe()
-    }
+    setSession(currentSession)
+    setUser(currentSession?.user || null)
+    setLoading(false)
   }, [])
 
   async function login(credentials) {
     const data = await iniciarSesion(credentials)
+
     setSession(data.session)
     setUser(data.user)
+
     return data
   }
 
-  async function register({ email, password, metadata }) {
-    const data = await registrarUsuario({ email, password, metadata })
+  async function register({ email, password, nombre, apellido }) {
+    const data = await registrarUsuario({
+      email,
+      password,
+      nombre,
+      apellido,
+    })
+
     setSession(data.session)
-    setUser(data.session?.user || null)
+    setUser(data.user)
+
     return data
   }
 
   async function logout() {
-    await cerrarSesion()
+    cerrarSesion()
     setSession(null)
     setUser(null)
   }
@@ -74,10 +58,15 @@ export function AuthProvider({ children }) {
       session,
       sesion: session,
       loading,
+
       login,
-      registro: register,
       register,
+      registro: register,
       logout,
+
+      isAuthenticated: Boolean(user),
+      isAdmin: user?.rol?.toUpperCase() === 'ADMIN',
+      isCliente: user?.rol?.toUpperCase() === 'CLIENTE',
     }),
     [user, session, loading],
   )

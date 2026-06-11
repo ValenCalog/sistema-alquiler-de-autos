@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabaseClient'
 
+const AUTH_STORAGE_KEY = 'authUser'
+
 function requireSupabase() {
   if (!supabase) {
     throw new Error('No se pudo conectar con Supabase. Revisa la configuracion del entorno.')
@@ -8,134 +10,132 @@ function requireSupabase() {
   return supabase
 }
 
-function getFriendlyAuthMessage(error) {
-  const message = String(error?.message || '').toLowerCase()
-  const status = error?.status
-
-  if (message.includes('supabase') || message.includes('configuracion')) {
-    return 'No se pudo conectar con Supabase. Revisa la configuracion del entorno.'
-  }
-
-  if (message.includes('invalid login credentials') || status === 400) {
-    return 'Email o contrasena incorrectos.'
-  }
-
-  if (message.includes('email not confirmed')) {
-    return 'Tenes que confirmar tu correo antes de iniciar sesion.'
-  }
-
-  if (message.includes('user already registered') || message.includes('already registered')) {
-    return 'Ya existe una cuenta registrada con ese email.'
-  }
-
-  if (
-    message.includes('password') &&
-    (message.includes('6') || message.includes('weak') || message.includes('short'))
-  ) {
-    return 'La contrasena debe tener al menos 6 caracteres.'
-  }
-
-  if (message.includes('signup') && message.includes('disabled')) {
-    return 'El registro de usuarios esta deshabilitado en Supabase.'
-  }
-
-  if (message.includes('invalid email') || message.includes('email address is invalid')) {
-    return 'Ingresa un email valido.'
-  }
-
-  if (message.includes('email rate limit exceeded') || message.includes('rate limit')) {
-    return 'Se hicieron demasiados intentos. Espera unos minutos y proba de nuevo.'
-  }
-
-  if (message.includes('database error')) {
-    return 'Supabase no pudo guardar el usuario. Revisa si hay triggers o restricciones sobre usuarios/clientes.'
-  }
-
-  if (message.includes('error sending confirmation email')) {
-    return 'La cuenta se intento crear, pero Supabase no pudo enviar el correo de confirmacion.'
-  }
-
-  if (message.includes('fetch') || message.includes('network') || message.includes('failed to fetch')) {
-    return 'No se pudo conectar con Supabase. Intenta nuevamente.'
-  }
-
-  return error?.message || 'Ocurrio un error. Intenta nuevamente.'
+function normalizeRol(rol) {
+  return rol ? String(rol).toUpperCase() : 'CLIENTE'
 }
 
-function throwFriendlyError(error) {
-  console.error('Error de autenticacion:', error)
-  throw new Error(getFriendlyAuthMessage(error))
+function getFirstRow(data) {
+  if (Array.isArray(data)) {
+    return data[0]
+  }
+
+  return data
 }
 
-export async function registrarUsuario({ email, password, metadata }) {
+function guardarUsuario(user) {
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
+}
+
+function obtenerUsuarioGuardado() {
+  const stored = localStorage.getItem(AUTH_STORAGE_KEY)
+
+  if (!stored) {
+    return null
+  }
+
+  try {
+    return JSON.parse(stored)
+  } catch {
+    localStorage.removeItem(AUTH_STORAGE_KEY)
+    return null
+  }
+}
+
+function crearSesion(user) {
+  return user ? { user } : null
+}
+
+export async function registrarUsuario({ email, password, nombre, apellido }) {
   try {
     const client = requireSupabase()
-    const { data, error } = await client.auth.signUp({ 
-      email, 
-      password,
-      options: {
-        data: metadata, 
-      }
+
+    const { data, error } = await client.rpc('fn_registrar_cliente_api', {
+      p_email: email,
+      p_contrasenia: password,
+      p_nombre_cliente: nombre,
+      p_apellido_cliente: apellido,
     })
 
-    if (error) throw error
+    if (error) {
+      throw error
+    }
 
-    return data
+    const result = getFirstRow(data)
+
+    if (!result?.exito) {
+      throw new Error(result?.mensaje || 'No se pudo registrar el cliente.')
+    }
+
+    const user = {
+      idUsuario: result.id_usuario,
+      idCliente: result.id_cliente,
+      email,
+      rol: normalizeRol(result.rol),
+      nombre,
+      apellido,
+    }
+
+    guardarUsuario(user)
+
+    return {
+      ...result,
+      user,
+      session: crearSesion(user),
+    }
   } catch (error) {
-    throwFriendlyError(error)
+    console.error('Error de registro:', error)
+    throw new Error(error.message || 'No se pudo registrar el usuario.')
   }
 }
 
 export async function iniciarSesion({ email, password }) {
   try {
     const client = requireSupabase()
-    const { data, error } = await client.auth.signInWithPassword({ email, password })
 
-    if (error) throw error
+    const { data, error } = await client.rpc('fn_login_usuario_api', {
+      p_email: email,
+      p_contrasenia: password,
+    })
 
-    return data
+    if (error) {
+      throw error
+    }
+
+    const result = getFirstRow(data)
+
+    if (!result?.exito) {
+      throw new Error(result?.mensaje || 'Email o contraseña incorrectos.')
+    }
+
+    const user = {
+      idUsuario: result.id_usuario,
+      idCliente: result.id_cliente,
+      email: result.email,
+      rol: normalizeRol(result.rol),
+    }
+
+    guardarUsuario(user)
+
+    return {
+      ...result,
+      user,
+      session: crearSesion(user),
+    }
   } catch (error) {
-    throwFriendlyError(error)
+    console.error('Error de login:', error)
+    throw new Error(error.message || 'No se pudo iniciar sesión.')
   }
 }
 
-export async function cerrarSesion() {
-  try {
-    const client = requireSupabase()
-    const { error } = await client.auth.signOut()
-
-    if (error) throw error
-  } catch (error) {
-    throwFriendlyError(error)
-  }
+export function cerrarSesion() {
+  localStorage.removeItem(AUTH_STORAGE_KEY)
 }
 
-export async function obtenerSesionActual() {
-  if (!supabase) return null
-
-  try {
-    const { data, error } = await supabase.auth.getSession()
-
-    if (error) throw error
-
-    return data.session
-  } catch (error) {
-    console.error('No se pudo obtener la sesion actual:', error)
-    return null
-  }
+export function obtenerSesionActual() {
+  const user = obtenerUsuarioGuardado()
+  return crearSesion(user)
 }
 
-export async function obtenerUsuarioActual() {
-  if (!supabase) return null
-
-  try {
-    const { data, error } = await supabase.auth.getUser()
-
-    if (error) throw error
-
-    return data.user
-  } catch (error) {
-    console.error('No se pudo obtener el usuario actual:', error)
-    return null
-  }
+export function obtenerUsuarioActual() {
+  return obtenerUsuarioGuardado()
 }
