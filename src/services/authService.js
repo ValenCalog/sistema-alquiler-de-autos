@@ -1,98 +1,141 @@
 import { supabase } from '../lib/supabaseClient'
 
+const AUTH_STORAGE_KEY = 'authUser'
+
+function requireSupabase() {
+  if (!supabase) {
+    throw new Error('No se pudo conectar con Supabase. Revisa la configuracion del entorno.')
+  }
+
+  return supabase
+}
+
 function normalizeRol(rol) {
-  return String(rol || '').trim().toUpperCase()
+  return rol ? String(rol).toUpperCase() : 'CLIENTE'
 }
 
-function normalizeAuthUser(row, fallbackEmail = '') {
-  return {
-    idUsuario: row?.id_usuario ?? null,
-    idCliente: row?.id_cliente ?? null,
-    email: row?.email || fallbackEmail,
-    rol: normalizeRol(row?.rol),
+function getFirstRow(data) {
+  if (Array.isArray(data)) {
+    return data[0]
+  }
+
+  return data
+}
+
+function guardarUsuario(user) {
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
+}
+
+function obtenerUsuarioGuardado() {
+  const stored = localStorage.getItem(AUTH_STORAGE_KEY)
+
+  if (!stored) {
+    return null
+  }
+
+  try {
+    return JSON.parse(stored)
+  } catch {
+    localStorage.removeItem(AUTH_STORAGE_KEY)
+    return null
   }
 }
 
-function normalizeAuthRpcResponse(data, fallbackEmail = '') {
-  const row = Array.isArray(data) ? data[0] : data
-  const exito = Boolean(row?.exito)
-  const user = exito ? normalizeAuthUser(row, fallbackEmail) : null
-
-  return {
-    exito,
-    mensaje: row?.mensaje || '',
-    user,
-    idUsuario: user?.idUsuario ?? row?.id_usuario ?? null,
-    idCliente: user?.idCliente ?? row?.id_cliente ?? null,
-    email: user?.email ?? row?.email ?? fallbackEmail,
-    rol: user?.rol ?? normalizeRol(row?.rol),
-  }
+function crearSesion(user) {
+  return user ? { user } : null
 }
 
-function authErrorResult(mensaje) {
-  return {
-    exito: false,
-    mensaje,
-    user: null,
-    idUsuario: null,
-    idCliente: null,
-    email: '',
-    rol: '',
+export async function registrarUsuario({ email, password, nombre, apellido }) {
+  try {
+    const client = requireSupabase()
+
+    const { data, error } = await client.rpc('fn_registrar_cliente_api', {
+      p_email: email,
+      p_contrasenia: password,
+      p_nombre_cliente: nombre,
+      p_apellido_cliente: apellido,
+    })
+
+    if (error) {
+      throw error
+    }
+
+    const result = getFirstRow(data)
+
+    if (!result?.exito) {
+      throw new Error(result?.mensaje || 'No se pudo registrar el cliente.')
+    }
+
+    const user = {
+      idUsuario: result.id_usuario,
+      idCliente: result.id_cliente,
+      email,
+      rol: normalizeRol(result.rol),
+      nombre,
+      apellido,
+    }
+
+    guardarUsuario(user)
+
+    return {
+      ...result,
+      user,
+      session: crearSesion(user),
+    }
+  } catch (error) {
+    console.error('Error de registro:', error)
+    throw new Error(error.message || 'No se pudo registrar el usuario.')
   }
 }
 
 export async function iniciarSesion({ email, password }) {
-  if (!supabase) {
-    return authErrorResult('No se pudo conectar con Supabase. Revisa la configuracion del entorno.')
-  }
-
   try {
-    const { data, error } = await supabase.rpc('fn_login_usuario_api', {
+    const client = requireSupabase()
+
+    const { data, error } = await client.rpc('fn_login_usuario_api', {
       p_email: email,
       p_contrasenia: password,
     })
 
     if (error) {
-      console.error('Error tecnico al iniciar sesion:', error)
-      return authErrorResult('No se pudo iniciar sesion en este momento.')
+      throw error
     }
 
-    const result = normalizeAuthRpcResponse(data, email)
+    const result = getFirstRow(data)
+
+    if (!result?.exito) {
+      throw new Error(result?.mensaje || 'Email o contraseña incorrectos.')
+    }
+
+    const user = {
+      idUsuario: result.id_usuario,
+      idCliente: result.id_cliente,
+      email: result.email,
+      rol: normalizeRol(result.rol),
+    }
+
+    guardarUsuario(user)
 
     return {
       ...result,
-      mensaje: result.mensaje || 'No se pudo iniciar sesion.',
+      user,
+      session: crearSesion(user),
     }
   } catch (error) {
-    console.error('Error inesperado al iniciar sesion:', error)
-    return authErrorResult('No se pudo iniciar sesion en este momento.')
+    console.error('Error de login:', error)
+    throw new Error(error.message || 'No se pudo iniciar sesión.')
   }
 }
 
-export async function registrarUsuario({ email, password }) {
-  if (!supabase) {
-    return authErrorResult('No se pudo conectar con Supabase. Revisa la configuracion del entorno.')
-  }
+export function cerrarSesion() {
+  localStorage.removeItem(AUTH_STORAGE_KEY)
+}
 
-  try {
-    const { data, error } = await supabase.rpc('fn_registrar_cliente_api', {
-      p_email: email,
-      p_contrasenia: password,
-    })
+export function obtenerSesionActual() {
+  const user = obtenerUsuarioGuardado()
+  return crearSesion(user)
+}
 
-    if (error) {
-      console.error('Error tecnico al registrar cliente:', error)
-      return authErrorResult('No se pudo registrar la cuenta en este momento.')
-    }
-
-    const result = normalizeAuthRpcResponse(data, email)
-
-    return {
-      ...result,
-      mensaje: result.mensaje || 'No se pudo registrar la cuenta.',
-    }
-  } catch (error) {
-    console.error('Error inesperado al registrar cliente:', error)
-    return authErrorResult('No se pudo registrar la cuenta en este momento.')
-  }
+export function obtenerUsuarioActual() {
+  return obtenerUsuarioGuardado()
 }

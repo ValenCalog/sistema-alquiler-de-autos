@@ -1,6 +1,11 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useMemo, useState } from 'react'
-import { iniciarSesion, registrarUsuario } from '../services/authService'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  cerrarSesion,
+  iniciarSesion,
+  obtenerSesionActual,
+  registrarUsuario,
+} from '../services/authService'
 
 const AuthContext = createContext(null)
 const AUTH_STORAGE_KEY = 'autonexo_usuario'
@@ -46,45 +51,44 @@ function normalizeUser(user) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => normalizeUser(getStoredUser()))
-  const loading = false
+  const [session, setSession] = useState(null)
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
 
-  async function login({ email, password }) {
-    const result = await iniciarSesion({ email, password })
+  useEffect(() => {
+    const currentSession = obtenerSesionActual()
 
-    if (result.exito) {
-      const nextUser = normalizeUser(result.user)
-      saveStoredUser(nextUser)
-      setUser(nextUser)
+    setSession(currentSession)
+    setUser(currentSession?.user || null)
+    setLoading(false)
+  }, [])
 
-      return {
-        ...result,
-        user: nextUser,
-      }
-    }
+  async function login(credentials) {
+    const data = await iniciarSesion(credentials)
 
-    return result
+    setSession(data.session)
+    setUser(data.user)
+
+    return data
   }
 
-  async function register({ email, password }) {
-    const result = await registrarUsuario({ email, password })
+  async function register({ email, password, nombre, apellido }) {
+    const data = await registrarUsuario({
+      email,
+      password,
+      nombre,
+      apellido,
+    })
 
-    if (result.exito) {
-      const nextUser = normalizeUser(result.user)
-      saveStoredUser(nextUser)
-      setUser(nextUser)
+    setSession(data.session)
+    setUser(data.user)
 
-      return {
-        ...result,
-        user: nextUser,
-      }
-    }
-
-    return result
+    return data
   }
 
-  function logout() {
-    removeStoredUser()
+  async function logout() {
+    cerrarSesion()
+    setSession(null)
     setUser(null)
   }
 
@@ -99,13 +103,15 @@ export function AuthProvider({ children }) {
       session: null,
       sesion: null,
       loading,
+
       login,
-      registro: register,
       register,
+      registro: register,
       logout,
-      isAuthenticated,
-      isAdmin,
-      isCliente,
+
+      isAuthenticated: Boolean(user),
+      isAdmin: user?.rol?.toUpperCase() === 'ADMIN',
+      isCliente: user?.rol?.toUpperCase() === 'CLIENTE',
     }),
     [user, loading, isAuthenticated, isAdmin, isCliente],
   )
