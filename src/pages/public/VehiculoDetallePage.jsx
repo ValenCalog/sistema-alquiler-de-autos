@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import VehicleImage from '../../components/ui/VehicleImage'
+import { useAuth } from '../../context/AuthContext'
 import {
   calcularDiasReserva,
   crearReserva,
@@ -10,11 +11,33 @@ import {
 } from '../../services/reservasService'
 import { getVehiculoById } from '../../services/vehiculosService'
 
-// TODO: Reemplazar por el id del cliente autenticado cuando se implemente Supabase Auth.
-const CLIENTE_DEMO_ID = 1
+function getLocalTodayDate() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function addDaysToDateString(dateString, days) {
+  if (!dateString) return ''
+
+  const [year, month, day] = dateString.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + days)
+
+  const nextYear = date.getFullYear()
+  const nextMonth = String(date.getMonth() + 1).padStart(2, '0')
+  const nextDay = String(date.getDate()).padStart(2, '0')
+
+  return `${nextYear}-${nextMonth}-${nextDay}`
+}
 
 function VehiculoDetallePage() {
   const { id } = useParams()
+  const location = useLocation()
+  const { isCliente, loading: authLoading, user } = useAuth()
   const [vehicle, setVehicle] = useState(null)
   const [loadingVehicle, setLoadingVehicle] = useState(true)
   const [fallbackMessage, setFallbackMessage] = useState('')
@@ -54,6 +77,13 @@ function VehiculoDetallePage() {
     [reservation],
   )
 
+  const todayDate = useMemo(() => getLocalTodayDate(), [])
+  const hasValidClientId = Number.isInteger(Number(user?.idCliente)) && Number(user?.idCliente) > 0
+  const canReserve = Boolean(user && isCliente && hasValidClientId)
+  const minReturnDate = useMemo(
+    () => (reservation.inicio ? addDaysToDateString(reservation.inicio, 1) : todayDate),
+    [reservation.inicio, todayDate],
+  )
   const estimatedCost = days * (vehicle?.precioDiario || 0)
   const galleryImages = useMemo(() => {
     if (!vehicle) return []
@@ -105,6 +135,14 @@ function VehiculoDetallePage() {
 
   async function handleSubmit(event) {
     event.preventDefault()
+
+    if (authLoading) return
+
+    if (!canReserve) {
+      setError('Tenes que iniciar sesion como cliente para crear una reserva.')
+      return
+    }
+
     const formData = new FormData(event.currentTarget)
     const nextReservation = {
       inicio: formData.get('inicio'),
@@ -116,6 +154,16 @@ function VehiculoDetallePage() {
 
     if (!nextReservation.inicio || !nextReservation.devolucion) {
       setError('Completa la fecha de inicio y la fecha de devolucion prevista.')
+      return
+    }
+
+    if (nextReservation.inicio < todayDate) {
+      setError('La fecha de inicio no puede ser anterior a hoy.')
+      return
+    }
+
+    if (nextReservation.devolucion <= nextReservation.inicio) {
+      setError('La fecha de devolucion debe ser posterior a la fecha de inicio.')
       return
     }
 
@@ -131,7 +179,7 @@ function VehiculoDetallePage() {
     const fechaFinTimestamp = `${nextReservation.devolucion} 10:00:00`
 
     const result = await crearReserva({
-      idCliente: CLIENTE_DEMO_ID,
+      idCliente: Number(user.idCliente),
       idVehiculo: Number(vehicle.id),
       fechaInicio: fechaInicioTimestamp,
       fechaFin: fechaFinTimestamp,
@@ -147,7 +195,7 @@ function VehiculoDetallePage() {
     const reservaLocal = guardarReservaLocal({
       id: `R-${result.idReserva}`,
       idReserva: result.idReserva,
-      cliente: 'Cliente demo',
+      cliente: user.email,
       idVehiculo: Number(vehicle.id),
       vehiculoId: vehicle.id,
       marca: vehicle.marca,
@@ -268,61 +316,79 @@ function VehiculoDetallePage() {
             </div>
           </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="rounded-lg border border-[var(--color-border)] bg-white p-6 shadow-sm"
-          >
-            <h2 className="text-xl font-bold text-[var(--color-primary)]">Solicitar reserva</h2>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <label className="space-y-2 text-sm font-semibold text-[var(--color-muted)]">
-                Fecha de inicio
-                <input
-                  type="date"
-                  name="inicio"
-                  value={reservation.inicio}
-                  onChange={handleReservationChange}
-                  onInput={handleReservationChange}
-                  className="field"
-                  required
-                />
-              </label>
-              <label className="space-y-2 text-sm font-semibold text-[var(--color-muted)]">
-                Fecha de devolucion prevista
-                <input
-                  type="date"
-                  name="devolucion"
-                  value={reservation.devolucion}
-                  onChange={handleReservationChange}
-                  onInput={handleReservationChange}
-                  className="field"
-                  required
-                />
-              </label>
-            </div>
-
-            <div className="mt-5 rounded-md bg-[var(--color-bg)] p-4 text-sm">
-              <p className="font-bold text-[var(--color-text)]">Resumen</p>
-              <p className="mt-2 text-[var(--color-muted)]">
-                Duracion estimada: {days || '-'} dias
-              </p>
-              <p className="mt-1 text-[var(--color-muted)]">
-                Total estimado:{' '}
-                <span className="font-bold text-[var(--color-text)]">
-                  ${Number(estimatedCost).toLocaleString('es-AR')}
-                </span>
-              </p>
-            </div>
-
-            {error && (
-              <div className="mt-5 rounded-md border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-                {error}
+          {canReserve ? (
+            <form
+              onSubmit={handleSubmit}
+              className="rounded-lg border border-[var(--color-border)] bg-white p-6 shadow-sm"
+            >
+              <h2 className="text-xl font-bold text-[var(--color-primary)]">Solicitar reserva</h2>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <label className="space-y-2 text-sm font-semibold text-[var(--color-muted)]">
+                  Fecha de inicio
+                  <input
+                    type="date"
+                    name="inicio"
+                    min={todayDate}
+                    value={reservation.inicio}
+                    onChange={handleReservationChange}
+                    onInput={handleReservationChange}
+                    className="field"
+                    required
+                  />
+                </label>
+                <label className="space-y-2 text-sm font-semibold text-[var(--color-muted)]">
+                  Fecha de devolucion prevista
+                  <input
+                    type="date"
+                    name="devolucion"
+                    min={minReturnDate}
+                    value={reservation.devolucion}
+                    onChange={handleReservationChange}
+                    onInput={handleReservationChange}
+                    className="field"
+                    required
+                  />
+                </label>
               </div>
-            )}
 
-            <Button type="submit" className="mt-5 w-full" disabled={isSubmitting}>
-              {isSubmitting ? 'Registrando reserva...' : 'Confirmar reserva'}
-            </Button>
-          </form>
+              <div className="mt-5 rounded-md bg-[var(--color-bg)] p-4 text-sm">
+                <p className="font-bold text-[var(--color-text)]">Resumen</p>
+                <p className="mt-2 text-[var(--color-muted)]">
+                  Duracion estimada: {days || '-'} dias
+                </p>
+                <p className="mt-1 text-[var(--color-muted)]">
+                  Total estimado:{' '}
+                  <span className="font-bold text-[var(--color-text)]">
+                    ${Number(estimatedCost).toLocaleString('es-AR')}
+                  </span>
+                </p>
+              </div>
+
+              {error && (
+                <div className="mt-5 rounded-md border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+                  {error}
+                </div>
+              )}
+
+              <Button type="submit" className="mt-5 w-full" disabled={isSubmitting}>
+                {isSubmitting ? 'Registrando reserva...' : 'Confirmar reserva'}
+              </Button>
+            </form>
+          ) : (
+            <section className="rounded-lg border border-[var(--color-border)] bg-white p-6 shadow-sm">
+              <h2 className="text-xl font-bold text-[var(--color-primary)]">Solicitar reserva</h2>
+              <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
+                Para reservar este vehiculo tenes que iniciar sesion con una cuenta de cliente.
+              </p>
+              <Button
+                to="/login"
+                state={{ from: location }}
+                className="mt-5 w-full"
+              >
+                Iniciar sesion para reservar
+              </Button>
+            </section>
+          )}
         </section>
       </div>
 

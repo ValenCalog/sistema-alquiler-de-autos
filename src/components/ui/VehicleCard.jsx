@@ -1,9 +1,16 @@
 import Badge from './Badge'
 import Button from './Button'
 import VehicleImage from './VehicleImage'
+import { useAuth } from '../../context/AuthContext'
 
 function VehicleCard({ vehicle }) {
+  const { isCliente, user } = useAuth()
   const imageSrc = vehicle.imagenPrincipal || vehicle.imagenes?.[0]
+  const detailPath = `/vehiculos/${vehicle.id}`
+  const hasValidClientId = Number.isInteger(Number(user?.idCliente)) && Number(user?.idCliente) > 0
+  const canReserve = Boolean(user && isCliente && hasValidClientId)
+  const reserveTarget = canReserve ? detailPath : '/login'
+  const reserveState = canReserve ? undefined : { from: { pathname: detailPath } }
 
   return (
     <article className="flex h-full flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
@@ -45,11 +52,11 @@ function VehicleCard({ vehicle }) {
         </dl>
 
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-          <Button to={`/vehiculos/${vehicle.id}`} variant="outline" className="flex-1">
+          <Button to={detailPath} variant="outline" className="flex-1">
             Ver detalle
           </Button>
-          <Button to={`/vehiculos/${vehicle.id}`} className="flex-1">
-            Reservar
+          <Button to={reserveTarget} state={reserveState} className="flex-1">
+            {canReserve ? 'Reservar' : 'Iniciar sesion para reservar'}
           </Button>
         </div>
       </div>

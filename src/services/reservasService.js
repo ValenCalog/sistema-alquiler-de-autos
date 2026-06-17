@@ -137,7 +137,7 @@ function normalizeReserva(row, vehiculo) {
       row.email_cliente ||
       row.emailCliente ||
       row.cliente ||
-      (idCliente ? `Cliente #${idCliente}` : 'Cliente demo'),
+      (idCliente ? `Cliente #${idCliente}` : 'Cliente no identificado'),
     marca: row.marca ?? vehiculoData.marca ?? 'Marca no especificada',
     modelo: row.modelo ?? vehiculoData.modelo ?? 'Modelo no especificado',
     tipo: row.tipo ?? vehiculoData.tipo ?? 'Tipo no especificado',
@@ -186,6 +186,10 @@ export function getReservas() {
 }
 
 export async function getMisReservas(idCliente) {
+  if (!Number.isInteger(Number(idCliente)) || Number(idCliente) <= 0) {
+    return supabaseResult([])
+  }
+
   try {
     const rows = await fetchReservasDetalle((query) => query.eq('id_cliente', idCliente))
     return supabaseResult(rows.map((reserva) => normalizeReserva(reserva)))
@@ -224,6 +228,14 @@ export function getMisReservasFallback() {
 }
 
 export async function crearReserva({ idCliente, idVehiculo, fechaInicio, fechaFin }) {
+  if (!Number.isInteger(Number(idCliente)) || Number(idCliente) <= 0) {
+    return {
+      exito: false,
+      mensaje: 'Tenes que iniciar sesion como cliente para crear una reserva.',
+      idReserva: null,
+    }
+  }
+
   if (!supabase) {
     return {
       exito: false,

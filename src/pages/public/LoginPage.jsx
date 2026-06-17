@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import { useAuth } from '../../context/AuthContext'
 
@@ -10,6 +10,7 @@ function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
 
   async function handleLogin(event) {
     event.preventDefault()
@@ -31,6 +32,16 @@ function LoginPage() {
 
     if (!result.exito) {
       setError(result.mensaje || 'No se pudo iniciar sesion.')
+      return
+    }
+
+    const destination = location.state?.from
+
+    if (destination?.pathname) {
+      navigate(
+        `${destination.pathname}${destination.search || ''}${destination.hash || ''}`,
+        { replace: true },
+      )
       return
     }
 

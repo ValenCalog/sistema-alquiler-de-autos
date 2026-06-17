@@ -1,9 +1,10 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 
-function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth()
+function ProtectedRoute({ children, requireCliente = false }) {
+  const { isCliente, loading, user } = useAuth()
   const location = useLocation()
+  const hasValidClientId = Number.isInteger(Number(user?.idCliente)) && Number(user?.idCliente) > 0
 
   if (loading) {
     return (
@@ -14,6 +15,10 @@ function ProtectedRoute({ children }) {
   }
 
   if (!user) {
+    return <Navigate replace state={{ from: location }} to="/login" />
+  }
+
+  if (requireCliente && (!isCliente || !hasValidClientId)) {
     return <Navigate replace state={{ from: location }} to="/login" />
   }
 
