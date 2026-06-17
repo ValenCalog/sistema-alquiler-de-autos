@@ -1,11 +1,6 @@
 import { useEffect, useState } from 'react'
 import StatCard from '../../components/ui/StatCard'
-import {
-  getAlquileresRecientes,
-  getDashboardStats,
-  getReservasRecientes,
-  getVehiculosAtrasados,
-} from '../../services/dashboardService'
+import { getDashboardData } from '../../services/dashboardService'
 
 const emptyStats = {
   vehiculosDisponibles: 0,
@@ -18,38 +13,55 @@ const emptyStats = {
   vehiculosAtrasados: 0,
 }
 
+function formatDateTime(value) {
+  if (!value) return 'Pendiente'
+
+  const rawValue = String(value).replace('T', ' ')
+  const [datePart, timePart = ''] = rawValue.split(' ')
+  const [year, month, day] = datePart.split('-')
+
+  if (!year || !month || !day) return rawValue
+
+  const time = timePart.slice(0, 5)
+  return time ? `${day}/${month}/${year} ${time}` : `${day}/${month}/${year}`
+}
+
 function AdminDashboardPage() {
   const [stats, setStats] = useState(emptyStats)
   const [reservasRecientes, setReservasRecientes] = useState([])
   const [alquileresRecientes, setAlquileresRecientes] = useState([])
+  const [alertasDevolucion, setAlertasDevolucion] = useState([])
   const [loading, setLoading] = useState(true)
-  const [fallbackMessage, setFallbackMessage] = useState('')
-  const atrasados = getVehiculosAtrasados()
+  const [errors, setErrors] = useState([])
 
   useEffect(() => {
     let ignore = false
 
     async function loadDashboard() {
-      const [nextStats, reservasResult, alquileresResult] = await Promise.all([
-        getDashboardStats(),
-        getReservasRecientes(),
-        getAlquileresRecientes(),
-      ])
+      try {
+        const data = await getDashboardData()
 
-      if (!ignore) {
-        setStats(nextStats)
-        setReservasRecientes(reservasResult.data)
-        setAlquileresRecientes(alquileresResult.data)
-        setFallbackMessage(
-          reservasResult.usedFallback || alquileresResult.usedFallback || nextStats.usedFallback
-            ? 'Algunos datos administrativos se muestran desde respaldo local.'
-            : '',
-        )
-        setLoading(false)
+        if (!ignore) {
+          setStats(data.stats)
+          setReservasRecientes(data.reservasRecientes)
+          setAlquileresRecientes(data.alquileresRecientes)
+          setAlertasDevolucion(data.alertasDevolucion)
+          setErrors(data.errors)
+          setLoading(false)
+        }
+      } catch (error) {
+        if (!ignore) {
+          setStats(emptyStats)
+          setReservasRecientes([])
+          setAlquileresRecientes([])
+          setAlertasDevolucion([])
+          setErrors([error.message || 'No se pudo cargar el dashboard.'])
+          setLoading(false)
+        }
       }
     }
 
-    loadDashboard()
+    Promise.resolve().then(() => loadDashboard())
 
     return () => {
       ignore = true
@@ -71,9 +83,14 @@ function AdminDashboardPage() {
         </p>
       </div>
 
-      {fallbackMessage && (
-        <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
-          {fallbackMessage}
+      {errors.length > 0 && (
+        <div className="mt-5 rounded-md border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+          <p>No se pudieron cargar algunos datos reales del dashboard.</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {errors.map((error) => (
+              <li key={error}>{error}</li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -101,7 +118,7 @@ function AdminDashboardPage() {
         <StatCard
           label="Facturas emitidas"
           value={loading ? '-' : stats.facturasEmitidas}
-          detail="Comprobantes simulados"
+          detail="Comprobantes generados"
         />
         <StatCard
           label="Vehiculos atrasados"
@@ -110,15 +127,26 @@ function AdminDashboardPage() {
         />
       </section>
 
-      {atrasados.length > 0 && (
-        <section className="mt-6 rounded-lg border border-red-200 bg-red-50 p-5">
-          <h2 className="text-lg font-bold text-red-800">Alertas de devolucion</h2>
+      <section className="mt-6 rounded-lg border border-red-200 bg-red-50 p-5">
+        <h2 className="text-lg font-bold text-red-800">Alertas de devolucion</h2>
+        {loading ? (
+          <p className="mt-4 rounded-md bg-white p-4 text-sm font-semibold text-[var(--color-muted)] shadow-sm">
+            Cargando alertas...
+          </p>
+        ) : alertasDevolucion.length === 0 ? (
+          <p className="mt-4 rounded-md bg-white p-4 text-sm font-semibold text-[var(--color-muted)] shadow-sm">
+            No hay devoluciones atrasadas.
+          </p>
+        ) : (
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
-            {atrasados.map((alerta) => (
+            {alertasDevolucion.map((alerta) => (
               <article key={alerta.id} className="rounded-md bg-white p-4 text-sm shadow-sm">
                 <p className="font-bold text-[var(--color-primary)]">{alerta.vehiculo}</p>
                 <p className="mt-1 text-red-700">
-                  {alerta.cliente} registra {alerta.diasAtraso} dia de atraso.
+                  {alerta.cliente}
+                  {alerta.diasAtraso
+                    ? ` registra ${alerta.diasAtraso} dia${alerta.diasAtraso === 1 ? '' : 's'} de atraso.`
+                    : ' registra una devolucion atrasada.'}
                 </p>
                 <p className="mt-1 text-[var(--color-muted)]">
                   Sucursal {alerta.sucursal} - devolucion prevista {alerta.devolucionPrevista}
@@ -126,8 +154,8 @@ function AdminDashboardPage() {
               </article>
             ))}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       <div className="mt-8 grid gap-6 xl:grid-cols-2">
         <section className="rounded-lg border border-[var(--color-border)] bg-white shadow-sm">
@@ -223,7 +251,7 @@ function AdminDashboardPage() {
                       <td className="px-5 py-4">{alquiler.cliente}</td>
                       <td className="px-5 py-4">{alquiler.vehiculo}</td>
                       <td className="px-5 py-4">
-                        {alquiler.fechaFinPrevista || alquiler.devolucionPrevista}
+                        {formatDateTime(alquiler.fechaHoraFin || alquiler.fechaFinPrevista)}
                       </td>
                       <td className="px-5 py-4">
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-[var(--color-secondary)]">

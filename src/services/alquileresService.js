@@ -1,31 +1,64 @@
-import { alquileres as mockAlquileres } from '../data/mockData'
 import { supabase } from '../lib/supabaseClient'
-import { getReservasAdmin } from './reservasService'
-import { getVehiculos } from './vehiculosService'
 
-function fallbackResult(data, motivo = '') {
-  console.warn('Usando fallback de alquileres por:', motivo)
-
-  return {
-    data,
-    error: motivo,
-    source: 'fallback',
-    usedFallback: true,
+function assertSupabase() {
+  if (!supabase) {
+    throw new Error('No hay variables de entorno de Supabase configuradas.')
   }
 }
 
-function supabaseResult(data, extra = {}) {
+function obtenerPrimeraFila(data) {
+  return Array.isArray(data) ? data[0] : data
+}
+
+function normalizeAlquiler(row) {
   return {
-    data,
-    error: '',
-    source: 'supabase',
-    usedFallback: false,
-    ...extra,
+    id: String(row.id_alquiler),
+    idAlquiler: row.id_alquiler,
+    idReserva: row.id_reserva ?? null,
+    idCliente: row.id_cliente ?? null,
+    cliente: row.cliente ?? 'Cliente no disponible',
+    emailCliente: row.email_cliente ?? '',
+    idVehiculo: row.id_vehiculo ?? null,
+    vehiculo: row.vehiculo ?? 'Vehiculo no disponible',
+    tipoVehiculo: row.tipo_vehiculo ?? '',
+    sucursal: row.sucursal ?? 'Sucursal no disponible',
+    fechaHoraInicio: row.fecha_hora_inicio ?? null,
+    fechaHoraFin: row.fecha_hora_fin ?? null,
+    fechaHoraEntrega: row.fecha_hora_entrega ?? null,
+    fechaInicio: row.fecha_hora_inicio ?? null,
+    fechaFinPrevista: row.fecha_hora_fin ?? null,
+    fechaEntrega: row.fecha_hora_entrega ?? null,
+    kilometrajeInicio: row.kilometraje_inicio ?? null,
+    kilometrajeFin: row.kilometraje_fin ?? null,
+    estado: row.estado_alquiler ?? 'Sin estado',
+    estadoAlquiler: row.estado_alquiler ?? 'Sin estado',
+    idFactura: row.id_factura ?? null,
+    montoAlquiler: row.monto_alquiler ?? null,
+    montoExtra: row.monto_extra ?? null,
+    montoTotal: row.monto_total ?? null,
   }
 }
 
-function normalizeAlquilerRpcResponse(data) {
-  const row = Array.isArray(data) ? data[0] : data
+function normalizeCliente(row) {
+  return {
+    idCliente: row.id_cliente,
+    nombreCompleto: row.nombre_completo ?? 'Cliente sin nombre',
+    email: row.email ?? '',
+  }
+}
+
+function normalizeVehiculo(row) {
+  return {
+    idVehiculo: row.id_vehiculo,
+    vehiculo: row.vehiculo ?? 'Vehiculo sin detalle',
+    tipo: row.tipo ?? '',
+    sucursal: row.sucursal ?? 'Sucursal no disponible',
+    estado: row.estado ?? '',
+  }
+}
+
+function normalizeCrearAlquilerResponse(data) {
+  const row = obtenerPrimeraFila(data)
 
   return {
     exito: Boolean(row?.exito),
@@ -34,8 +67,8 @@ function normalizeAlquilerRpcResponse(data) {
   }
 }
 
-function normalizeFinalizarAlquilerRpcResponse(data) {
-  const row = Array.isArray(data) ? data[0] : data
+function normalizeFinalizarAlquilerResponse(data) {
+  const row = obtenerPrimeraFila(data)
 
   return {
     exito: Boolean(row?.exito),
@@ -46,220 +79,107 @@ function normalizeFinalizarAlquilerRpcResponse(data) {
   }
 }
 
-function formatDate(value) {
-  if (!value) return ''
-  return String(value).slice(0, 10)
-}
+async function callRpc(name, params) {
+  assertSupabase()
 
-function normalizeVehiculoLabel(reserva, vehiculo) {
-  const marca = vehiculo?.marca || reserva?.marca || 'Vehiculo'
-  const modelo = vehiculo?.modelo || reserva?.modelo || 'sin detalle'
+  const { data, error } = await supabase.rpc(name, params)
 
-  return `${marca} ${modelo}`.trim()
-}
-
-function normalizeFallbackAlquiler(alquiler) {
-  return {
-    id: alquiler.id,
-    idAlquiler: alquiler.id,
-    idReserva: alquiler.idReserva ?? alquiler.reservaId ?? '',
-    cliente: alquiler.cliente ?? 'Cliente no disponible',
-    vehiculo: alquiler.vehiculo ?? 'Vehiculo no disponible',
-    sucursal: alquiler.sucursal ?? 'Sucursal no disponible',
-    fechaInicio: alquiler.inicio ?? '',
-    fechaFinPrevista: alquiler.devolucionPrevista ?? '',
-    fechaEntrega: alquiler.fechaEntrega ?? '',
-    kilometrajeInicio: alquiler.kilometrajeInicio ?? null,
-    kilometrajeFin: alquiler.kilometrajeFin ?? null,
-    inicio: alquiler.inicio ?? '',
-    devolucionPrevista: alquiler.devolucionPrevista ?? '',
-    estado: alquiler.estado ?? 'Sin estado',
+  if (error) {
+    console.error(`Error tecnico en ${name}:`, error)
+    throw new Error(error.message || 'Ocurrio un error al consultar Supabase.')
   }
+
+  return data
 }
 
-function normalizeAlquiler(row, reserva, vehiculo) {
-  const fechaEntrega =
-    row.fecha_hora_entrega || row.fecha_entrega || row.fecha_devolucion || row.fechaEntrega
-  const idAlquiler = row.id_alquiler ?? row.idAlquiler ?? row.id
-  const idReserva = row.id_reserva ?? row.idReserva ?? reserva?.idReserva ?? ''
-  const fechaInicio =
-    row.fecha_hora_inicio ||
-    row.fecha_inicio ||
-    row.fecha_alquiler_inicio ||
-    row.fecha_inicio_alquiler ||
-    reserva?.fechaInicio
-  const fechaFinPrevista =
-    row.fecha_hora_fin_prevista ||
-    row.fecha_fin_prevista ||
-    row.fecha_devolucion_prevista ||
-    row.fecha_solicitud_fin ||
-    reserva?.fechaFin
+export async function listarAlquileresAdmin() {
+  const data = await callRpc('fn_listar_alquileres_admin_api')
+  return (data || []).map(normalizeAlquiler)
+}
 
-  return {
-    id: String(idAlquiler),
-    idAlquiler,
-    idReserva,
-    idVehiculo: row.id_vehiculo ?? reserva?.idVehiculo ?? null,
-    cliente:
-      row.email_cliente ||
-      row.cliente ||
-      reserva?.emailCliente ||
-      reserva?.cliente ||
-      'Cliente no disponible',
-    vehiculo: row.vehiculo || normalizeVehiculoLabel(reserva, vehiculo),
-    sucursal: row.sucursal || vehiculo?.sucursal || reserva?.sucursal || 'Sucursal no disponible',
-    fechaInicio: formatDate(fechaInicio),
-    fechaFinPrevista: formatDate(fechaFinPrevista),
-    fechaEntrega: formatDate(fechaEntrega),
-    kilometrajeInicio: row.kilometraje_inicio ?? row.km_inicio ?? row.kilometrajeInicio ?? null,
-    kilometrajeFin: row.kilometraje_fin ?? row.km_fin ?? row.kilometrajeFin ?? null,
-    inicio: formatDate(fechaInicio),
-    devolucionPrevista: formatDate(fechaFinPrevista),
-    estado: fechaEntrega ? 'Finalizado' : 'En curso',
+export async function listarClientesParaAlquiler() {
+  const data = await callRpc('fn_listar_clientes_alquiler_api')
+  return (data || []).map(normalizeCliente)
+}
+
+export async function listarVehiculosParaAlquilerDirecto() {
+  const data = await callRpc('fn_listar_vehiculos_alquiler_directo_api')
+  return (data || []).map(normalizeVehiculo)
+}
+
+export async function crearAlquilerDirecto({
+  idCliente,
+  idVehiculo,
+  fechaFin,
+  kilometrajeInicio,
+}) {
+  const data = await callRpc('fn_crear_alquiler_directo_api', {
+    p_id_cliente: idCliente,
+    p_id_vehiculo: idVehiculo,
+    p_fecha_fin: fechaFin,
+    p_kilometraje_inicio: kilometrajeInicio,
+  })
+  const result = normalizeCrearAlquilerResponse(data)
+
+  if (!result.exito) {
+    throw new Error(result.mensaje || 'No se pudo registrar el alquiler.')
   }
+
+  return result
 }
 
-function getFallbackAlquileres() {
-  return mockAlquileres.map(normalizeFallbackAlquiler)
+export async function finalizarAlquiler({ idAlquiler, kilometrajeFin }) {
+  const data = await callRpc('fn_finalizar_alquiler_api', {
+    p_id_alquiler: idAlquiler,
+    p_kilometraje_fin: kilometrajeFin,
+  })
+  const result = normalizeFinalizarAlquilerResponse(data)
+
+  if (!result.exito) {
+    throw new Error(result.mensaje || 'No se pudo finalizar el alquiler.')
+  }
+
+  return result
 }
 
 export async function procesarAlquilerDesdeReserva({ idReserva, kilometrajeInicio }) {
-  if (!supabase) {
-    return {
-      exito: false,
-      mensaje: 'No se pudo procesar el alquiler en este momento.',
-      idAlquiler: null,
-    }
-  }
-
   try {
-    console.log('Procesando alquiler desde reserva:', idReserva, kilometrajeInicio)
-
-    const { data, error } = await supabase.rpc('fn_procesar_alquiler_desde_reserva_api', {
+    const data = await callRpc('fn_procesar_alquiler_desde_reserva_api', {
       p_id_reserva: idReserva,
       p_kilometraje_inicio: kilometrajeInicio,
     })
-
-    console.log('Respuesta procesar alquiler:', data)
-
-    if (error) {
-      console.log('Error procesar alquiler:', error)
-      console.error('Error tecnico al procesar alquiler:', error)
-      return {
-        exito: false,
-        mensaje: 'No se pudo procesar el alquiler en este momento.',
-        idAlquiler: null,
-      }
-    }
-
-    const result = normalizeAlquilerRpcResponse(data)
+    const result = normalizeCrearAlquilerResponse(data)
 
     return {
       ...result,
       mensaje: result.mensaje || 'No se pudo procesar el alquiler.',
     }
   } catch (error) {
-    console.log('Error procesar alquiler:', error)
     console.error('Error inesperado al procesar alquiler:', error)
     return {
       exito: false,
-      mensaje: 'No se pudo procesar el alquiler en este momento.',
+      mensaje: error.message || 'No se pudo procesar el alquiler en este momento.',
       idAlquiler: null,
     }
   }
 }
 
-export async function finalizarAlquiler({ idAlquiler, kilometrajeFin }) {
-  if (!supabase) {
-    return {
-      exito: false,
-      mensaje: 'No se pudo finalizar el alquiler en este momento.',
-      idFactura: null,
-      montoAlquiler: null,
-      montoExtra: null,
-    }
-  }
-
-  try {
-    console.log('Finalizando alquiler:', idAlquiler, kilometrajeFin)
-
-    const { data, error } = await supabase.rpc('fn_finalizar_alquiler_api', {
-      p_id_alquiler: idAlquiler,
-      p_kilometraje_fin: kilometrajeFin,
-    })
-
-    console.log('Respuesta finalizar alquiler:', data)
-
-    if (error) {
-      console.log('Error finalizar alquiler:', error)
-      console.error('Error tecnico al finalizar alquiler:', error)
-      return {
-        exito: false,
-        mensaje: 'No se pudo finalizar el alquiler en este momento.',
-        idFactura: null,
-        montoAlquiler: null,
-        montoExtra: null,
-      }
-    }
-
-    const result = normalizeFinalizarAlquilerRpcResponse(data)
-
-    return {
-      ...result,
-      mensaje: result.mensaje || 'No se pudo finalizar el alquiler.',
-    }
-  } catch (error) {
-    console.log('Error finalizar alquiler:', error)
-    console.error('Error inesperado al finalizar alquiler:', error)
-    return {
-      exito: false,
-      mensaje: 'No se pudo finalizar el alquiler en este momento.',
-      idFactura: null,
-      montoAlquiler: null,
-      montoExtra: null,
-    }
-  }
-}
-
 export async function getAlquileresAdmin() {
-  if (!supabase) {
-    return fallbackResult(getFallbackAlquileres(), 'No hay variables de entorno de Supabase configuradas.')
-  }
-
   try {
-    const { data, error } = await supabase
-      .from('alquiler')
-      .select('*')
-      .order('id_alquiler', { ascending: false })
+    const data = await listarAlquileresAdmin()
 
-    if (error) {
-      console.log('Error al leer alquileres:', error)
-      throw error
+    return {
+      data,
+      error: '',
+      source: 'supabase',
+      usedFallback: false,
     }
-
-    console.log('Alquileres desde public.alquiler:', data)
-
-    const [reservasResult, vehiculosResult] = await Promise.all([getReservasAdmin(), getVehiculos()])
-    const reservas = reservasResult.data || []
-    const vehiculos = vehiculosResult.data || []
-
-    const reservasById = new Map(
-      reservas.map((reserva) => [String(reserva.idReserva), reserva]),
-    )
-    const vehiculosById = new Map(vehiculos.map((vehiculo) => [String(vehiculo.id), vehiculo]))
-
-    const normalized = (data || []).map((alquiler) => {
-      const reserva = reservasById.get(String(alquiler.id_reserva ?? alquiler.idReserva))
-      const idVehiculo = alquiler.id_vehiculo ?? reserva?.idVehiculo
-      const vehiculo = vehiculosById.get(String(idVehiculo))
-
-      return normalizeAlquiler(alquiler, reserva, vehiculo)
-    })
-
-    return supabaseResult(normalized, {
-      usedFallback: reservasResult.usedFallback || vehiculosResult.usedFallback,
-    })
   } catch (error) {
-    return fallbackResult(getFallbackAlquileres(), error.message)
+    return {
+      data: [],
+      error: error.message,
+      source: 'supabase',
+      usedFallback: false,
+    }
   }
 }
