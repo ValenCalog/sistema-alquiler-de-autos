@@ -24,11 +24,18 @@ function App() {
             <Route path="/" element={<HomeCliente />} />
             <Route path="/vehiculos" element={<VehiculosPage />} />
             <Route path="/vehiculos/:id" element={<VehiculoDetallePage />} />
-            <Route path="/reservas" element={<ReservasClientePage />} />
+            <Route
+              path="/reservas"
+              element={
+                <ProtectedRoute requireCliente>
+                  <ReservasClientePage />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/mis-reservas"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute requireCliente>
                   <MisReservasPage />
                 </ProtectedRoute>
               }
@@ -39,7 +46,7 @@ function App() {
           <Route element={<AdminLayout />}>
             <Route path="/admin" element={<AdminDashboardPage />} />
             <Route path="/admin/vehiculos" element={<AdminVehiculosPage />} />
-          <Route path="/admin/reservas" element={<AdminReservasPage />} />
+            <Route path="/admin/reservas" element={<AdminReservasPage />} />
             <Route path="/admin/alquileres" element={<AdminAlquileresPage />} />
           </Route>
         </Routes>

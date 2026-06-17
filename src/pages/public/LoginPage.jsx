@@ -1,5 +1,6 @@
+
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import { useAuth } from '../../context/AuthContext'
 
@@ -10,6 +11,7 @@ function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   const navigate = useNavigate()
+  const location = useLocation()
   const { login } = useAuth()
 
   async function handleLogin(event) {
@@ -34,13 +36,38 @@ function LoginPage() {
         password,
       })
 
+      /*
+       * Si el usuario fue enviado al login desde una ruta protegida,
+       * vuelve a esa página después de iniciar sesión.
+       */
+      const destination = location.state?.from
+
+      if (destination) {
+        const destinationPath =
+          typeof destination === 'string'
+            ? destination
+            : `${destination.pathname || ''}${destination.search || ''}${
+                destination.hash || ''
+              }`
+
+        if (destinationPath) {
+          navigate(destinationPath, { replace: true })
+          return
+        }
+      }
+
+      /*
+       * Si no existe una ruta de destino guardada,
+       * redirige según el rol.
+       */
       const rol = data.user?.rol?.toUpperCase()
 
       if (rol === 'ADMIN') {
         navigate('/admin', { replace: true })
-      } else {
-        navigate('/vehiculos', { replace: true })
+        return
       }
+
+      navigate('/vehiculos', { replace: true })
     } catch (authError) {
       setError(authError.message || 'No se pudo iniciar sesión.')
     } finally {
@@ -56,7 +83,7 @@ function LoginPage() {
         </h1>
 
         <p className="mt-2 text-sm text-[var(--color-muted)]">
-          Accede para gestionar tus reservas online.
+          Accedé para gestionar tus reservas online.
         </p>
 
         <form onSubmit={handleLogin} className="mt-6 space-y-4">
@@ -91,12 +118,12 @@ function LoginPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Iniciando...' : 'Iniciar sesion'}
+            {loading ? 'Iniciando...' : 'Iniciar sesión'}
           </Button>
         </form>
 
         <p className="mt-5 text-center text-sm text-[var(--color-muted)]">
-          No tenes cuenta?{' '}
+          ¿No tenés cuenta?{' '}
           <Link to="/registro" className="font-bold text-[var(--color-accent)]">
             Registrarse
           </Link>

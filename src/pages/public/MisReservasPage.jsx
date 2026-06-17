@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
 import Button from '../../components/ui/Button'
+import { useAuth } from '../../context/AuthContext'
 import { cancelarReserva, getMisReservas } from '../../services/reservasService'
-
-// TODO: Reemplazar por el cliente autenticado cuando exista Supabase Auth.
-const CLIENTE_DEMO_ID = 1
 
 function formatCurrency(value) {
   return value != null ? `$${value.toLocaleString('es-AR')}` : 'No disponible'
@@ -16,6 +14,8 @@ function puedeCancelarReserva(estado) {
 }
 
 function MisReservasPage() {
+  const { user } = useAuth()
+  const idCliente = user?.idCliente
   const [misReservas, setMisReservas] = useState([])
   const [loading, setLoading] = useState(true)
   const [fallbackMessage, setFallbackMessage] = useState('')
@@ -23,7 +23,7 @@ function MisReservasPage() {
   const [cancelingId, setCancelingId] = useState(null)
 
   async function loadReservas() {
-    const result = await getMisReservas(CLIENTE_DEMO_ID)
+    const result = await getMisReservas(idCliente)
 
     setMisReservas(result.data)
     setFallbackMessage(
@@ -38,7 +38,7 @@ function MisReservasPage() {
     let ignore = false
 
     async function loadInitialReservas() {
-      const result = await getMisReservas(CLIENTE_DEMO_ID)
+      const result = await getMisReservas(idCliente)
 
       if (!ignore) {
         setMisReservas(result.data)
@@ -56,7 +56,7 @@ function MisReservasPage() {
     return () => {
       ignore = true
     }
-  }, [])
+  }, [idCliente])
 
   async function handleCancelarReserva(idReserva) {
     const confirmed = window.confirm(`Confirmas la cancelacion de la reserva #${idReserva}?`)

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import VehicleImage from '../../components/ui/VehicleImage'
-import CalendarioReservas from '../../components/ui/CalendarioReservas' // Asegúrate de ajustar esta ruta
+import CalendarioReservas from '../../components/ui/CalendarioReservas'
+import { useAuth } from '../../context/AuthContext'
 import {
   calcularDiasReserva,
   crearReserva,
@@ -12,41 +13,66 @@ import {
 } from '../../services/reservasService'
 import { getVehiculoById } from '../../services/vehiculosService'
 
-// TODO: Reemplazar por el id del cliente autenticado cuando se implemente Supabase Auth.
-const CLIENTE_DEMO_ID = 1
+// Funciones utilitarias para el manejo de fechas
+function getLocalTodayDate() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
-// Función auxiliar para bloquear fechas pasadas en los inputs nativos
-const getTodayFormatted = () => {
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = String(today.getMonth() + 1).padStart(2, '0');
-  const d = String(today.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
+function addDaysToDateString(dateString, days) {
+  if (!dateString) return ''
+
+  const [year, month, day] = dateString.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + days)
+
+  const nextYear = date.getFullYear()
+  const nextMonth = String(date.getMonth() + 1).padStart(2, '0')
+  const nextDay = String(date.getDate()).padStart(2, '0')
+
+  return `${nextYear}-${nextMonth}-${nextDay}`
+}
 
 function VehiculoDetallePage() {
   const { id } = useParams()
+  const location = useLocation()
+  
+  // Lógica de Autenticación
+  const { isCliente, loading: authLoading, user } = useAuth()
+  
+  // Estados de datos
   const [vehicle, setVehicle] = useState(null)
   const [loadingVehicle, setLoadingVehicle] = useState(true)
   const [fallbackMessage, setFallbackMessage] = useState('')
   const [selectedImage, setSelectedImage] = useState(0)
   
-  // Estado centralizado para la sincronización bidireccional
+  // Estados para el Calendario y Reserva
   const [reservation, setReservation] = useState({ inicio: '', devolucion: '' })
   const [fechasOcupadas, setFechasOcupadas] = useState([])
   
+  // Estados de la UI
   const [error, setError] = useState('')
   const [createdReservation, setCreatedReservation] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Obtenemos la fecha de hoy formateada para el atributo min de los inputs
-  const todayFormatted = getTodayFormatted();
+  // Validaciones y variables derivadas
+  const todayDate = useMemo(() => getLocalTodayDate(), [])
+  const hasValidClientId = Number.isInteger(Number(user?.idCliente)) && Number(user?.idCliente) > 0
+  const canReserve = Boolean(user && isCliente && hasValidClientId)
+  
+  const minReturnDate = useMemo(
+    () => (reservation.inicio ? addDaysToDateString(reservation.inicio, 1) : todayDate),
+    [reservation.inicio, todayDate]
+  )
 
   useEffect(() => {
     let ignore = false
 
     async function loadVehicleData() {
-      // Ejecutamos ambas consultas en paralelo para mejorar el rendimiento
+      // Consultas en paralelo (Vehículo + Reservas ocupadas)
       const [vehicleResult, reservasResult] = await Promise.all([
         getVehiculoById(id),
         getReservasPorVehiculo(id)
@@ -61,14 +87,11 @@ function VehiculoDetallePage() {
             : '',
         )
         
-        // 1. Definimos los estados estrictos que ocupan el vehículo
+        // Mapeo robusto para el calendario
         const estadosBloqueantes = ['FINALIZADA', 'ACTIVA'];
-
-        // 2. Filtramos robustamente normalizando el string y 3. Mapeamos al formato del calendario
         const reservasFiltradas = (reservasResult.data || [])
           .filter((res) => {
             if (!res.estado) return false;
-            // Normalización: eliminamos espacios extra y pasamos a mayúsculas
             const estadoNormalizado = String(res.estado).trim().toUpperCase();
             return estadosBloqueantes.includes(estadoNormalizado);
           })
@@ -77,7 +100,6 @@ function VehiculoDetallePage() {
             fin: res.devolucion 
           }));
         
-        // Guardamos solo los rangos válidos en el estado
         setFechasOcupadas(reservasFiltradas)
         setSelectedImage(0)
         setLoadingVehicle(false)
@@ -100,7 +122,6 @@ function VehiculoDetallePage() {
   
   const galleryImages = useMemo(() => {
     if (!vehicle) return []
-
     return [...new Set([...(vehicle.imagenes || []), vehicle.imagenPrincipal])]
       .map((image) => String(image || '').trim())
       .filter((image) => image.length > 0)
@@ -140,14 +161,14 @@ function VehiculoDetallePage() {
     )
   }
 
-  // Manejador para los inputs nativos
+  // Sincronización Bidireccional (Inputs nativos -> Estado)
   function handleReservationChange(event) {
     const { name, value } = event.target
     setReservation((current) => ({ ...current, [name]: value }))
     setError('')
   }
 
-  // Manejador para el componente Calendario
+  // Sincronización Bidireccional (Calendario -> Estado)
   function handleFechasCalendarioSeleccionadas(fechas) {
     setReservation((prev) => ({
       ...prev,
@@ -159,13 +180,31 @@ function VehiculoDetallePage() {
 
   async function handleSubmit(event) {
     event.preventDefault()
-    
-    // Leemos directamente del estado controlado
+
+    if (authLoading) return
+
+    if (!canReserve) {
+      setError('Tenes que iniciar sesion como cliente para crear una reserva.')
+      return
+    }
+
+    // Leemos directamente del estado controlado reactivo
     const { inicio, devolucion } = reservation
     const formDays = calcularDiasReserva(inicio, devolucion)
 
     if (!inicio || !devolucion) {
       setError('Completa la fecha de inicio y la fecha de devolucion prevista.')
+      return
+    }
+
+    // Validaciones cronológicas
+    if (inicio < todayDate) {
+      setError('La fecha de inicio no puede ser anterior a hoy.')
+      return
+    }
+
+    if (devolucion <= inicio) {
+      setError('La fecha de devolucion debe ser posterior a la fecha de inicio.')
       return
     }
 
@@ -180,8 +219,9 @@ function VehiculoDetallePage() {
     const fechaInicioTimestamp = `${inicio} 10:00:00`
     const fechaFinTimestamp = `${devolucion} 10:00:00`
 
+    // Se envía el idCliente real extraído de Supabase/AuthContext
     const result = await crearReserva({
-      idCliente: CLIENTE_DEMO_ID,
+      idCliente: Number(user.idCliente),
       idVehiculo: Number(vehicle.id),
       fechaInicio: fechaInicioTimestamp,
       fechaFin: fechaFinTimestamp,
@@ -197,7 +237,7 @@ function VehiculoDetallePage() {
     const reservaLocal = guardarReservaLocal({
       id: `R-${result.idReserva}`,
       idReserva: result.idReserva,
-      cliente: 'Cliente demo',
+      cliente: user.email,
       idVehiculo: Number(vehicle.id),
       vehiculoId: vehicle.id,
       marca: vehicle.marca,
@@ -238,6 +278,7 @@ function VehiculoDetallePage() {
       )}
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[1.08fr_0.92fr]">
+        {/* Columna Izquierda (Imágenes e Info) */}
         <section>
           <div className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-white shadow-sm">
             <VehicleImage
@@ -270,6 +311,7 @@ function VehiculoDetallePage() {
           )}
         </section>
 
+        {/* Columna Derecha (Specs y Formulario) */}
         <section className="space-y-5">
           <div className="rounded-lg border border-[var(--color-border)] bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -318,72 +360,90 @@ function VehiculoDetallePage() {
             </div>
           </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="rounded-lg border border-[var(--color-border)] bg-white p-6 shadow-sm"
-          >
-            <h2 className="text-xl font-bold text-[var(--color-primary)] mb-5">Solicitar reserva</h2>
-            
-            {/* Integración del Calendario */}
-            <div className="mb-6 flex justify-center">
-              <CalendarioReservas 
-                reservasExistentes={fechasOcupadas}
-                fechaInicio={reservation.inicio}
-                fechaFin={reservation.devolucion}
-                onFechasSeleccionadas={handleFechasCalendarioSeleccionadas}
-              />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-2 text-sm font-semibold text-[var(--color-muted)]">
-                Fecha de inicio
-                <input
-                  type="date"
-                  name="inicio"
-                  min={todayFormatted} // Bloquea fechas anteriores a hoy en el selector nativo
-                  value={reservation.inicio}
-                  onChange={handleReservationChange}
-                  className="field w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
-                  required
+          {/* Renderizado condicional basado en Auth */}
+          {canReserve ? (
+            <form
+              onSubmit={handleSubmit}
+              className="rounded-lg border border-[var(--color-border)] bg-white p-6 shadow-sm"
+            >
+              <h2 className="text-xl font-bold text-[var(--color-primary)] mb-5">Solicitar reserva</h2>
+              
+              <div className="mb-6 flex justify-center">
+                <CalendarioReservas 
+                  reservasExistentes={fechasOcupadas}
+                  fechaInicio={reservation.inicio}
+                  fechaFin={reservation.devolucion}
+                  onFechasSeleccionadas={handleFechasCalendarioSeleccionadas}
                 />
-              </label>
-              <label className="space-y-2 text-sm font-semibold text-[var(--color-muted)]">
-                Fecha de devolucion prevista
-                <input
-                  type="date"
-                  name="devolucion"
-                  min={reservation.inicio || todayFormatted} // Bloquea fechas anteriores al inicio seleccionado (o a hoy si no hay inicio)
-                  value={reservation.devolucion}
-                  onChange={handleReservationChange}
-                  className="field w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
-                  required
-                />
-              </label>
-            </div>
-
-            <div className="mt-6 rounded-md bg-[var(--color-bg)] p-4 text-sm">
-              <p className="font-bold text-[var(--color-text)]">Resumen</p>
-              <p className="mt-2 text-[var(--color-muted)]">
-                Duracion estimada: {days || '-'} dias
-              </p>
-              <p className="mt-1 text-[var(--color-muted)]">
-                Total estimado:{' '}
-                <span className="font-bold text-[var(--color-text)]">
-                  ${Number(estimatedCost).toLocaleString('es-AR')}
-                </span>
-              </p>
-            </div>
-
-            {error && (
-              <div className="mt-5 rounded-md border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-                {error}
               </div>
-            )}
 
-            <Button type="submit" className="mt-5 w-full" disabled={isSubmitting}>
-              {isSubmitting ? 'Registrando reserva...' : 'Confirmar reserva'}
-            </Button>
-          </form>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="space-y-2 text-sm font-semibold text-[var(--color-muted)]">
+                  Fecha de inicio
+                  <input
+                    type="date"
+                    name="inicio"
+                    min={todayDate}
+                    value={reservation.inicio}
+                    onChange={handleReservationChange}
+                    onInput={handleReservationChange}
+                    className="field w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+                    required
+                  />
+                </label>
+                <label className="space-y-2 text-sm font-semibold text-[var(--color-muted)]">
+                  Fecha de devolucion prevista
+                  <input
+                    type="date"
+                    name="devolucion"
+                    min={minReturnDate}
+                    value={reservation.devolucion}
+                    onChange={handleReservationChange}
+                    onInput={handleReservationChange}
+                    className="field w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className="mt-6 rounded-md bg-[var(--color-bg)] p-4 text-sm">
+                <p className="font-bold text-[var(--color-text)]">Resumen</p>
+                <p className="mt-2 text-[var(--color-muted)]">
+                  Duracion estimada: {days || '-'} dias
+                </p>
+                <p className="mt-1 text-[var(--color-muted)]">
+                  Total estimado:{' '}
+                  <span className="font-bold text-[var(--color-text)]">
+                    ${Number(estimatedCost).toLocaleString('es-AR')}
+                  </span>
+                </p>
+              </div>
+
+              {error && (
+                <div className="mt-5 rounded-md border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+                  {error}
+                </div>
+              )}
+
+              <Button type="submit" className="mt-5 w-full" disabled={isSubmitting}>
+                {isSubmitting ? 'Registrando reserva...' : 'Confirmar reserva'}
+              </Button>
+            </form>
+          ) : (
+            <section className="rounded-lg border border-[var(--color-border)] bg-white p-6 shadow-sm">
+              <h2 className="text-xl font-bold text-[var(--color-primary)]">Solicitar reserva</h2>
+              <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
+                Para reservar este vehiculo tenes que iniciar sesion con una cuenta de cliente.
+              </p>
+              <Button
+                to="/login"
+                state={{ from: location }}
+                className="mt-5 w-full"
+              >
+                Iniciar sesion para reservar
+              </Button>
+            </section>
+          )}
         </section>
       </div>
 
