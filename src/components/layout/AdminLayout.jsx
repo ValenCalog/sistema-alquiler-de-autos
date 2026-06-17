@@ -6,6 +6,10 @@ const adminLinks = [
   { to: '/admin/vehiculos', label: 'Vehiculos' },
   { to: '/admin/reservas', label: 'Reservas' },
   { to: '/admin/alquileres', label: 'Alquileres' },
+  {
+    to: '/admin/cierres-diarios',
+    label: 'Cierres diarios',
+  },
 ]
 
 function AdminLayout() {
