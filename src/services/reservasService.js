@@ -314,7 +314,22 @@ export function guardarReservaLocal(reserva) {
   return reserva
 }
 
-export function getAlquileres() {
-  // TODO: Reemplazar por Supabase cuando exista el modulo de alquileres.
-  return [...alquileres]
+export async function getReservasPorVehiculo(idVehiculo) {
+  try {
+    // Consultamos la vista filtrando por el ID del vehículo
+    const rows = await fetchReservasDetalle((query) => query.eq('id_vehiculo', idVehiculo))
+    
+    // Normalizamos y retornamos resultado exitoso de Supabase
+    return supabaseResult(rows.map((reserva) => normalizeReserva(reserva)))
+  } catch (error) {
+    // Si falla Supabase, leemos del fallback (localStorage + mockData)
+    const fallbackReservas = normalizeFallbackReservas([...getStoredReservas(), ...reservas])
+    
+    // Filtramos las reservas locales para que coincidan con el vehículo solicitado
+    const reservasDelVehiculo = fallbackReservas.filter(
+      (reserva) => String(reserva.idVehiculo) === String(idVehiculo)
+    )
+    
+    return fallbackResult(reservasDelVehiculo, error.message)
+  }
 }

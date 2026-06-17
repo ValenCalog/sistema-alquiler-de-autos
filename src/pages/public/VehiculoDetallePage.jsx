@@ -3,15 +3,26 @@ import { Link, useParams } from 'react-router-dom'
 import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import VehicleImage from '../../components/ui/VehicleImage'
+import CalendarioReservas from '../../components/ui/CalendarioReservas' // Asegúrate de ajustar esta ruta
 import {
   calcularDiasReserva,
   crearReserva,
   guardarReservaLocal,
+  getReservasPorVehiculo
 } from '../../services/reservasService'
 import { getVehiculoById } from '../../services/vehiculosService'
 
 // TODO: Reemplazar por el id del cliente autenticado cuando se implemente Supabase Auth.
 const CLIENTE_DEMO_ID = 1
+
+// Función auxiliar para bloquear fechas pasadas en los inputs nativos
+const getTodayFormatted = () => {
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth() + 1).padStart(2, '0');
+  const d = String(today.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
 
 function VehiculoDetallePage() {
   const { id } = useParams()
@@ -19,30 +30,61 @@ function VehiculoDetallePage() {
   const [loadingVehicle, setLoadingVehicle] = useState(true)
   const [fallbackMessage, setFallbackMessage] = useState('')
   const [selectedImage, setSelectedImage] = useState(0)
+  
+  // Estado centralizado para la sincronización bidireccional
   const [reservation, setReservation] = useState({ inicio: '', devolucion: '' })
+  const [fechasOcupadas, setFechasOcupadas] = useState([])
+  
   const [error, setError] = useState('')
   const [createdReservation, setCreatedReservation] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Obtenemos la fecha de hoy formateada para el atributo min de los inputs
+  const todayFormatted = getTodayFormatted();
+
   useEffect(() => {
     let ignore = false
 
-    async function loadVehicle() {
-      const result = await getVehiculoById(id)
+    async function loadVehicleData() {
+      // Ejecutamos ambas consultas en paralelo para mejorar el rendimiento
+      const [vehicleResult, reservasResult] = await Promise.all([
+        getVehiculoById(id),
+        getReservasPorVehiculo(id)
+      ])
 
       if (!ignore) {
-        setVehicle(result.data)
+        setVehicle(vehicleResult.data)
+        
         setFallbackMessage(
-          result.usedFallback
+          vehicleResult.usedFallback || reservasResult.usedFallback
             ? 'No se pudo conectar con Supabase. Se muestra informacion simulada.'
             : '',
         )
+        
+        // 1. Definimos los estados estrictos que ocupan el vehículo
+        const estadosBloqueantes = ['FINALIZADA', 'ACTIVA'];
+
+        // 2. Filtramos robustamente normalizando el string y 3. Mapeamos al formato del calendario
+        const reservasFiltradas = (reservasResult.data || [])
+          .filter((res) => {
+            if (!res.estado) return false;
+            // Normalización: eliminamos espacios extra y pasamos a mayúsculas
+            const estadoNormalizado = String(res.estado).trim().toUpperCase();
+            return estadosBloqueantes.includes(estadoNormalizado);
+          })
+          .map((res) => ({
+            inicio: res.inicio,
+            fin: res.devolucion 
+          }));
+        
+        // Guardamos solo los rangos válidos en el estado
+        setFechasOcupadas(reservasFiltradas)
         setSelectedImage(0)
         setLoadingVehicle(false)
       }
     }
 
-    loadVehicle()
+    loadVehicleData()
 
     return () => {
       ignore = true
@@ -55,6 +97,7 @@ function VehiculoDetallePage() {
   )
 
   const estimatedCost = days * (vehicle?.precioDiario || 0)
+  
   const galleryImages = useMemo(() => {
     if (!vehicle) return []
 
@@ -97,24 +140,31 @@ function VehiculoDetallePage() {
     )
   }
 
+  // Manejador para los inputs nativos
   function handleReservationChange(event) {
     const { name, value } = event.target
     setReservation((current) => ({ ...current, [name]: value }))
     setError('')
   }
 
+  // Manejador para el componente Calendario
+  function handleFechasCalendarioSeleccionadas(fechas) {
+    setReservation((prev) => ({
+      ...prev,
+      inicio: fechas.inicio !== undefined ? fechas.inicio : prev.inicio,
+      devolucion: fechas.fin !== undefined ? fechas.fin : prev.devolucion
+    }))
+    setError('')
+  }
+
   async function handleSubmit(event) {
     event.preventDefault()
-    const formData = new FormData(event.currentTarget)
-    const nextReservation = {
-      inicio: formData.get('inicio'),
-      devolucion: formData.get('devolucion'),
-    }
-    const formDays = calcularDiasReserva(nextReservation.inicio, nextReservation.devolucion)
+    
+    // Leemos directamente del estado controlado
+    const { inicio, devolucion } = reservation
+    const formDays = calcularDiasReserva(inicio, devolucion)
 
-    setReservation(nextReservation)
-
-    if (!nextReservation.inicio || !nextReservation.devolucion) {
+    if (!inicio || !devolucion) {
       setError('Completa la fecha de inicio y la fecha de devolucion prevista.')
       return
     }
@@ -127,8 +177,8 @@ function VehiculoDetallePage() {
     setIsSubmitting(true)
 
     // TODO: Permitir seleccionar horarios reales de retiro y devolucion.
-    const fechaInicioTimestamp = `${nextReservation.inicio} 10:00:00`
-    const fechaFinTimestamp = `${nextReservation.devolucion} 10:00:00`
+    const fechaInicioTimestamp = `${inicio} 10:00:00`
+    const fechaFinTimestamp = `${devolucion} 10:00:00`
 
     const result = await crearReserva({
       idCliente: CLIENTE_DEMO_ID,
@@ -155,10 +205,10 @@ function VehiculoDetallePage() {
       vehiculo: `${vehicle.marca} ${vehicle.modelo}`,
       tipo: vehicle.tipo,
       sucursal: vehicle.sucursal,
-      fechaInicio: nextReservation.inicio,
-      fechaFin: nextReservation.devolucion,
-      inicio: nextReservation.inicio,
-      devolucion: nextReservation.devolucion,
+      fechaInicio: inicio,
+      fechaFin: devolucion,
+      inicio: inicio,
+      devolucion: devolucion,
       estado: 'Pendiente',
       diasEstimados: formDays,
       costoEstimado: formDays * (vehicle.precioDiario || 0),
@@ -272,17 +322,28 @@ function VehiculoDetallePage() {
             onSubmit={handleSubmit}
             className="rounded-lg border border-[var(--color-border)] bg-white p-6 shadow-sm"
           >
-            <h2 className="text-xl font-bold text-[var(--color-primary)]">Solicitar reserva</h2>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <h2 className="text-xl font-bold text-[var(--color-primary)] mb-5">Solicitar reserva</h2>
+            
+            {/* Integración del Calendario */}
+            <div className="mb-6 flex justify-center">
+              <CalendarioReservas 
+                reservasExistentes={fechasOcupadas}
+                fechaInicio={reservation.inicio}
+                fechaFin={reservation.devolucion}
+                onFechasSeleccionadas={handleFechasCalendarioSeleccionadas}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
               <label className="space-y-2 text-sm font-semibold text-[var(--color-muted)]">
                 Fecha de inicio
                 <input
                   type="date"
                   name="inicio"
+                  min={todayFormatted} // Bloquea fechas anteriores a hoy en el selector nativo
                   value={reservation.inicio}
                   onChange={handleReservationChange}
-                  onInput={handleReservationChange}
-                  className="field"
+                  className="field w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
                   required
                 />
               </label>
@@ -291,16 +352,16 @@ function VehiculoDetallePage() {
                 <input
                   type="date"
                   name="devolucion"
+                  min={reservation.inicio || todayFormatted} // Bloquea fechas anteriores al inicio seleccionado (o a hoy si no hay inicio)
                   value={reservation.devolucion}
                   onChange={handleReservationChange}
-                  onInput={handleReservationChange}
-                  className="field"
+                  className="field w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
                   required
                 />
               </label>
             </div>
 
-            <div className="mt-5 rounded-md bg-[var(--color-bg)] p-4 text-sm">
+            <div className="mt-6 rounded-md bg-[var(--color-bg)] p-4 text-sm">
               <p className="font-bold text-[var(--color-text)]">Resumen</p>
               <p className="mt-2 text-[var(--color-muted)]">
                 Duracion estimada: {days || '-'} dias
